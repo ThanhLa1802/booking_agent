@@ -3,7 +3,7 @@ services:
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-trinity}
+      POSTGRES_DB: ${DB_NAME:-trinity_dev}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
@@ -27,27 +27,6 @@ services:
       timeout: 3s
       retries: 5
 
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    # Pull models on first start — override with GPU deploy config for CUDA
-    entrypoint: >
-      sh -c "ollama serve &
-             sleep 5 &&
-             ollama pull llama3.1:8b &&
-             ollama pull nomic-embed-text &&
-             wait"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 120s
-
   django:
     build:
       context: ../core_service
@@ -66,7 +45,7 @@ services:
         condition: service_healthy
     command: >
       sh -c "python manage.py migrate --noinput &&
-             python manage.py loaddata fixtures/initial_catalog.json fixtures/initial_centers.json &&
+             python manage.py loaddata fixtures/initial_catalog.json fixtures/initial_centers.json || true ;
              gunicorn core_service.wsgi:application --bind 0.0.0.0:8000 --workers 4"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/ || exit 1"]
@@ -84,7 +63,6 @@ services:
     environment:
       DB_HOST: db
       REDIS_URL: redis://redis:6379/0
-      OLLAMA_BASE_URL: http://ollama:11434
       CHROMA_PERSIST_DIR: /app/chromadb_data
       DOCS_DIR: /app/docs
     volumes:
@@ -94,8 +72,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
@@ -144,6 +120,8 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
     restart: unless-stopped
+    volumes:
+      - frontend_dist:/usr/share/nginx/html
     depends_on:
       - django
       - fast_api
@@ -152,7 +130,7 @@ services:
     image: nginx:1.25-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8080:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       # Serve React build from the frontend container's /usr/share/nginx/html
@@ -165,7 +143,6 @@ services:
 
 volumes:
   postgres_data:
-  ollama_data:
   chroma_data:
   frontend_dist:
 

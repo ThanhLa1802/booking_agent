@@ -11,9 +11,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
 
     # AI / LLM
-    llm_provider: str = "ollama"          # "ollama" | "google" | "openai"
-    llm_model: str = "llama3.1:8b"
-    embedding_model: str = "nomic-embed-text"
+    llm_provider: str = "openai"          # "ollama" | "google" | "openai"
+    llm_model: str = "gpt-4o-mini"
+    embedding_model: str = "text-embedding-3-small"
+    openai_api_key: str = ""
     chroma_persist_dir: str = "./chromadb_data"
     docs_dir: str = "../docs"
 
