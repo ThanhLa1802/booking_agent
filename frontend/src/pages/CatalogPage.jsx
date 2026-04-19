@@ -17,7 +17,8 @@ import {
     Alert,
     Button,
 } from '@mui/material'
-import { MusicNote as MusicNoteIcon, EventAvailable as EventAvailableIcon } from '@mui/icons-material'
+import MusicNoteIcon from '@mui/icons-material/MusicNote'
+import EventAvailableIcon from '@mui/icons-material/EventAvailable'
 import { getCourses, getSlots } from '../api'
 import useExamStore from '../stores/examStore'
 import Navbar from '../components/Navbar'

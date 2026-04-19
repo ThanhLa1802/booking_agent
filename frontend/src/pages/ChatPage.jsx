@@ -8,7 +8,7 @@ import {
     TextField,
     Typography,
 } from '@mui/material'
-import { Send as SendIcon } from '@mui/icons-material'
+import SendIcon from '@mui/icons-material/Send'
 import useAuthStore from '../stores/authStore'
 import useChatStore from '../stores/chatStore'
 import useExamStore from '../stores/examStore'

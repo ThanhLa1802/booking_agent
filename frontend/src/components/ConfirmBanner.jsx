@@ -1,5 +1,6 @@
 import { Box, Button, Paper, Typography } from '@mui/material'
-import { CheckCircleOutline as CheckCircleOutlineIcon, CancelOutlined as CancelOutlinedIcon } from '@mui/icons-material'
+import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
+import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined'
 
 /**
  * ConfirmBanner — shown when agent requires explicit confirmation
@@ -29,7 +30,7 @@ export default function ConfirmBanner({ onConfirm, onCancel }) {
                     size="small"
                     variant="contained"
                     color="success"
-                    startIcon={<CheckCircleOutlineIcon />}
+                    startIcon={<CheckCircleOutlinedIcon />}
                     onClick={onConfirm}
                 >
                     Xác nhận

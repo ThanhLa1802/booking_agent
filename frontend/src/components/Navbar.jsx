@@ -1,5 +1,5 @@
 import { AppBar, Box, Button, Toolbar, Typography } from '@mui/material'
-import { MusicNote as MusicNoteIcon } from '@mui/icons-material'
+import MusicNoteIcon from '@mui/icons-material/MusicNote'
 import { Link, useNavigate } from 'react-router-dom'
 import useAuthStore from '../stores/authStore'
 
