@@ -1,0 +1,171 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-trinity}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    # Pull models on first start — override with GPU deploy config for CUDA
+    entrypoint: >
+      sh -c "ollama serve &
+             sleep 5 &&
+             ollama pull llama3.1:8b &&
+             ollama pull nomic-embed-text &&
+             wait"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  django:
+    build:
+      context: ../core_service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../core_service/.env
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py loaddata fixtures/initial_catalog.json fixtures/initial_centers.json &&
+             gunicorn core_service.wsgi:application --bind 0.0.0.0:8000 --workers 4"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  fast_api:
+    build:
+      context: ../fast_api_services
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../fast_api_services/.env
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_BASE_URL: http://ollama:11434
+      CHROMA_PERSIST_DIR: /app/chromadb_data
+      DOCS_DIR: /app/docs
+    volumes:
+      - chroma_data:/app/chromadb_data
+      - ../docs:/app/docs:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  celery:
+    build:
+      context: ../core_service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../core_service/.env
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A core_service worker -l info -Q default
+
+  celery-beat:
+    build:
+      context: ../core_service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../core_service/.env
+    environment:
+      DB_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - django
+      - fast_api
+
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Serve React build from the frontend container's /usr/share/nginx/html
+      # via a named volume shared between frontend and nginx
+      - frontend_dist:/usr/share/nginx/html:ro
+    depends_on:
+      - django
+      - fast_api
+      - frontend
+
+volumes:
+  postgres_data:
+  ollama_data:
+  chroma_data:
+  frontend_dist:
+

@@ -1,0 +1,273 @@
+[
+    {
+        "model": "catalog.instrument",
+        "pk": 1,
+        "fields": {
+            "name": "Piano",
+            "style": "CLASSICAL_JAZZ",
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.instrument",
+        "pk": 2,
+        "fields": {
+            "name": "Violin",
+            "style": "CLASSICAL_JAZZ",
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.instrument",
+        "pk": 3,
+        "fields": {
+            "name": "Guitar",
+            "style": "CLASSICAL_JAZZ",
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.instrument",
+        "pk": 4,
+        "fields": {
+            "name": "Guitar",
+            "style": "ROCK_POP",
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.instrument",
+        "pk": 5,
+        "fields": {
+            "name": "Vocals",
+            "style": "ROCK_POP",
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.instrument",
+        "pk": 6,
+        "fields": {
+            "name": "Drums",
+            "style": "ROCK_POP",
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.instrument",
+        "pk": 7,
+        "fields": {
+            "name": "Theory of Music",
+            "style": "THEORY",
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 1,
+        "fields": {
+            "instrument": 1,
+            "grade": 1,
+            "name": "Piano Grade 1",
+            "description": "Beginner classical piano",
+            "duration_minutes": 10,
+            "fee": 800000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 2,
+        "fields": {
+            "instrument": 1,
+            "grade": 2,
+            "name": "Piano Grade 2",
+            "description": "Elementary classical piano",
+            "duration_minutes": 12,
+            "fee": 850000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 3,
+        "fields": {
+            "instrument": 1,
+            "grade": 3,
+            "name": "Piano Grade 3",
+            "description": "Lower intermediate piano",
+            "duration_minutes": 15,
+            "fee": 900000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 4,
+        "fields": {
+            "instrument": 1,
+            "grade": 4,
+            "name": "Piano Grade 4",
+            "description": "Intermediate piano",
+            "duration_minutes": 20,
+            "fee": 950000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 5,
+        "fields": {
+            "instrument": 1,
+            "grade": 5,
+            "name": "Piano Grade 5",
+            "description": "Upper intermediate piano",
+            "duration_minutes": 20,
+            "fee": 1000000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 6,
+        "fields": {
+            "instrument": 1,
+            "grade": 6,
+            "name": "Piano Grade 6",
+            "description": "Lower advanced piano",
+            "duration_minutes": 25,
+            "fee": 1100000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 7,
+        "fields": {
+            "instrument": 1,
+            "grade": 7,
+            "name": "Piano Grade 7",
+            "description": "Advanced piano",
+            "duration_minutes": 25,
+            "fee": 1200000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 8,
+        "fields": {
+            "instrument": 1,
+            "grade": 8,
+            "name": "Piano Grade 8",
+            "description": "Professional piano",
+            "duration_minutes": 30,
+            "fee": 1400000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 9,
+        "fields": {
+            "instrument": 4,
+            "grade": 1,
+            "name": "Rock & Pop Guitar Grade 1",
+            "description": "Beginner rock/pop guitar",
+            "duration_minutes": 10,
+            "fee": 750000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 10,
+        "fields": {
+            "instrument": 4,
+            "grade": 3,
+            "name": "Rock & Pop Guitar Grade 3",
+            "description": "Intermediate rock/pop guitar",
+            "duration_minutes": 15,
+            "fee": 850000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 11,
+        "fields": {
+            "instrument": 4,
+            "grade": 5,
+            "name": "Rock & Pop Guitar Grade 5",
+            "description": "Upper intermediate rock/pop guitar",
+            "duration_minutes": 20,
+            "fee": 950000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 12,
+        "fields": {
+            "instrument": 5,
+            "grade": 1,
+            "name": "Rock & Pop Vocals Grade 1",
+            "description": "Beginner rock/pop vocals",
+            "duration_minutes": 10,
+            "fee": 750000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 13,
+        "fields": {
+            "instrument": 5,
+            "grade": 3,
+            "name": "Rock & Pop Vocals Grade 3",
+            "description": "Intermediate rock/pop vocals",
+            "duration_minutes": 15,
+            "fee": 850000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 14,
+        "fields": {
+            "instrument": 7,
+            "grade": 1,
+            "name": "Theory Grade 1",
+            "description": "Written music theory exam",
+            "duration_minutes": 30,
+            "fee": 600000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 15,
+        "fields": {
+            "instrument": 7,
+            "grade": 3,
+            "name": "Theory Grade 3",
+            "description": "Written music theory exam",
+            "duration_minutes": 45,
+            "fee": 650000,
+            "is_active": true
+        }
+    },
+    {
+        "model": "catalog.course",
+        "pk": 16,
+        "fields": {
+            "instrument": 7,
+            "grade": 5,
+            "name": "Theory Grade 5",
+            "description": "Written music theory exam — qualification for Grades 6–8",
+            "duration_minutes": 60,
+            "fee": 700000,
+            "is_active": true
+        }
+    }
+]

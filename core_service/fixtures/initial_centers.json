@@ -1,0 +1,304 @@
+[
+    {
+        "model": "centers.examcenter",
+        "pk": 1,
+        "fields": {
+            "name": "Trinity Hanoi Center",
+            "city": "Hanoi",
+            "address": "15 Tran Hung Dao, Hoan Kiem, Hanoi",
+            "phone": "024 3825 0000",
+            "email": "hanoi@trinityexam.vn",
+            "admin_user": null,
+            "is_active": true,
+            "created_at": "2024-01-01T00:00:00Z"
+        }
+    },
+    {
+        "model": "centers.examcenter",
+        "pk": 2,
+        "fields": {
+            "name": "Trinity HCMC Center",
+            "city": "Ho Chi Minh City",
+            "address": "60 Nguyen Van Thu, District 1, HCMC",
+            "phone": "028 3829 0000",
+            "email": "hcmc@trinityexam.vn",
+            "admin_user": null,
+            "is_active": true,
+            "created_at": "2024-01-01T00:00:00Z"
+        }
+    },
+    {
+        "model": "centers.examcenter",
+        "pk": 3,
+        "fields": {
+            "name": "Trinity Da Nang Center",
+            "city": "Da Nang",
+            "address": "120 Le Duan, Hai Chau, Da Nang",
+            "phone": "0236 3825 0000",
+            "email": "danang@trinityexam.vn",
+            "admin_user": null,
+            "is_active": true,
+            "created_at": "2024-01-01T00:00:00Z"
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 1,
+        "fields": {
+            "center": 1,
+            "course": 1,
+            "exam_date": "2025-03-15",
+            "start_time": "09:00:00",
+            "capacity": 5,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 2,
+        "fields": {
+            "center": 1,
+            "course": 1,
+            "exam_date": "2025-03-15",
+            "start_time": "10:00:00",
+            "capacity": 5,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 3,
+        "fields": {
+            "center": 1,
+            "course": 2,
+            "exam_date": "2025-03-15",
+            "start_time": "11:00:00",
+            "capacity": 4,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 4,
+        "fields": {
+            "center": 1,
+            "course": 5,
+            "exam_date": "2025-03-22",
+            "start_time": "09:00:00",
+            "capacity": 3,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 5,
+        "fields": {
+            "center": 1,
+            "course": 8,
+            "exam_date": "2025-03-22",
+            "start_time": "14:00:00",
+            "capacity": 2,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 6,
+        "fields": {
+            "center": 2,
+            "course": 1,
+            "exam_date": "2025-03-20",
+            "start_time": "09:00:00",
+            "capacity": 5,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 7,
+        "fields": {
+            "center": 2,
+            "course": 9,
+            "exam_date": "2025-03-20",
+            "start_time": "10:00:00",
+            "capacity": 4,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 8,
+        "fields": {
+            "center": 2,
+            "course": 12,
+            "exam_date": "2025-03-20",
+            "start_time": "13:00:00",
+            "capacity": 4,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 9,
+        "fields": {
+            "center": 2,
+            "course": 14,
+            "exam_date": "2025-03-27",
+            "start_time": "09:00:00",
+            "capacity": 8,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 10,
+        "fields": {
+            "center": 2,
+            "course": 16,
+            "exam_date": "2025-03-27",
+            "start_time": "14:00:00",
+            "capacity": 6,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 11,
+        "fields": {
+            "center": 3,
+            "course": 1,
+            "exam_date": "2025-04-05",
+            "start_time": "09:00:00",
+            "capacity": 3,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 12,
+        "fields": {
+            "center": 3,
+            "course": 10,
+            "exam_date": "2025-04-05",
+            "start_time": "10:00:00",
+            "capacity": 3,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 13,
+        "fields": {
+            "center": 3,
+            "course": 13,
+            "exam_date": "2025-04-05",
+            "start_time": "13:00:00",
+            "capacity": 3,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 14,
+        "fields": {
+            "center": 3,
+            "course": 15,
+            "exam_date": "2025-04-12",
+            "start_time": "09:00:00",
+            "capacity": 5,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 15,
+        "fields": {
+            "center": 1,
+            "course": 3,
+            "exam_date": "2025-04-19",
+            "start_time": "09:00:00",
+            "capacity": 4,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 16,
+        "fields": {
+            "center": 1,
+            "course": 4,
+            "exam_date": "2025-04-19",
+            "start_time": "10:30:00",
+            "capacity": 4,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 17,
+        "fields": {
+            "center": 2,
+            "course": 6,
+            "exam_date": "2025-04-26",
+            "start_time": "09:00:00",
+            "capacity": 3,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 18,
+        "fields": {
+            "center": 2,
+            "course": 7,
+            "exam_date": "2025-04-26",
+            "start_time": "11:00:00",
+            "capacity": 3,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 19,
+        "fields": {
+            "center": 3,
+            "course": 11,
+            "exam_date": "2025-05-03",
+            "start_time": "09:00:00",
+            "capacity": 4,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    },
+    {
+        "model": "centers.examslot",
+        "pk": 20,
+        "fields": {
+            "center": 1,
+            "course": 5,
+            "exam_date": "2025-05-10",
+            "start_time": "09:00:00",
+            "capacity": 5,
+            "reserved_count": 0,
+            "is_active": true
+        }
+    }
+]
