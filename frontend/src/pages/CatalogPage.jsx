@@ -116,31 +116,64 @@ export default function CatalogPage() {
                 <Grid container spacing={2}>
                     {slots.map((slot) => (
                         <Grid item xs={12} sm={6} md={4} key={slot.id}>
-                            <Card variant="outlined">
-                                <CardActionArea onClick={() => handleBookSlot(slot)}>
-                                    <CardContent>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                            <MusicNoteIcon color="primary" fontSize="small" />
-                                            <Typography variant="subtitle1" fontWeight={600}>
-                                                {slot.instrument} — Grade {slot.grade}
+                            <Card
+                                variant="outlined"
+                                sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+                            >
+                                <CardActionArea
+                                    onClick={() => handleBookSlot(slot)}
+                                    sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+                                >
+                                    <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                        {/* Header: instrument + grade */}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <MusicNoteIcon color="primary" fontSize="small" sx={{ flexShrink: 0 }} />
+                                            <Typography
+                                                variant="subtitle1"
+                                                fontWeight={600}
+                                                noWrap
+                                                title={`${slot.instrument_name} — Grade ${slot.grade}`}
+                                            >
+                                                {slot.instrument_name} — Grade {slot.grade}
                                             </Typography>
                                         </Box>
-                                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                                            {slot.exam_type_display || slot.exam_type}
-                                        </Typography>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                                            <EventAvailableIcon fontSize="small" color="success" />
+
+                                        {/* Style badge */}
+                                        <Chip
+                                            size="small"
+                                            label={slot.style_display}
+                                            variant="outlined"
+                                            color="primary"
+                                            sx={{ alignSelf: 'flex-start', fontSize: '0.7rem' }}
+                                        />
+
+                                        {/* Date + time */}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
+                                            <EventAvailableIcon fontSize="small" color="success" sx={{ flexShrink: 0 }} />
                                             <Typography variant="body2">
                                                 {new Date(slot.exam_date).toLocaleDateString('vi-VN')} — {slot.start_time}
                                             </Typography>
                                         </Box>
-                                        <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+                                        {/* Location — truncate if too long */}
+                                        <Typography
+                                            variant="body2"
+                                            color="text.secondary"
+                                            noWrap
+                                            title={`${slot.center_name}, ${slot.center_city}`}
+                                            sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+                                        >
+                                            📍 {slot.center_name}, {slot.center_city}
+                                        </Typography>
+
+                                        {/* Footer: capacity + fee */}
+                                        <Box sx={{ mt: 'auto', pt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <Chip
                                                 size="small"
                                                 color={slot.available_capacity > 5 ? 'success' : 'warning'}
                                                 label={`Còn ${slot.available_capacity} chỗ`}
                                             />
-                                            <Typography variant="body2" fontWeight={600}>
+                                            <Typography variant="body2" fontWeight={700} color="primary.main">
                                                 {Number(slot.fee).toLocaleString('vi-VN')}đ
                                             </Typography>
                                         </Box>

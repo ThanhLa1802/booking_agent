@@ -110,10 +110,12 @@ async def list_available_slots(
         SELECT s.id, s.exam_date, s.start_time, s.capacity, s.reserved_count,
                s.course_id, s.center_id,
                ec.name AS center_name, ec.city AS center_city,
-               c.name AS course_name
+               c.name AS course_name, c.grade, c.fee,
+               i.name AS instrument_name, i.style
         FROM centers_examslot s
         JOIN centers_examcenter ec ON ec.id = s.center_id
         JOIN catalog_course c ON c.id = s.course_id
+        JOIN catalog_instrument i ON i.id = c.instrument_id
         WHERE s.is_active = true AND s.reserved_count < s.capacity
     """
     params: dict = {}
@@ -142,6 +144,11 @@ async def list_available_slots(
             center_city=r["center_city"],
             course_id=r["course_id"],
             course_name=r["course_name"],
+            instrument_name=r["instrument_name"],
+            grade=r["grade"],
+            style=r["style"],
+            style_display=STYLE_LABELS.get(r["style"], r["style"]),
+            fee=r["fee"],
             exam_date=r["exam_date"],
             start_time=r["start_time"],
             capacity=r["capacity"],

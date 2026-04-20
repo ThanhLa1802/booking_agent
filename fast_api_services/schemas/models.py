@@ -54,6 +54,11 @@ class ExamSlotOut(BaseModel):
     center_city: str
     course_id: int
     course_name: str
+    instrument_name: str
+    grade: int
+    style: str
+    style_display: str
+    fee: Decimal
     exam_date: date
     start_time: time
     capacity: int
