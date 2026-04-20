@@ -113,25 +113,26 @@ export default function CatalogPage() {
                     <Typography color="text.secondary">Không có slot nào khả dụng.</Typography>
                 )}
 
-                <Grid container spacing={2} alignItems="stretch">
+                <Grid container spacing={2}>
                     {slots.map((slot) => (
                         <Grid item xs={12} sm={6} md={4} key={slot.id} sx={{ display: 'flex' }}>
                             <Card
                                 variant="outlined"
-                                sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+                                sx={{ width: '100%', height: 230, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
                             >
                                 <CardActionArea
                                     onClick={() => handleBookSlot(slot)}
-                                    sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+                                    sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start' }}
                                 >
-                                    <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                    <CardContent sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', gap: 0.75, overflow: 'hidden', boxSizing: 'border-box' }}>
                                         {/* Header: instrument + grade */}
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, overflow: 'hidden' }}>
                                             <MusicNoteIcon color="primary" fontSize="small" sx={{ flexShrink: 0 }} />
                                             <Typography
                                                 variant="subtitle1"
                                                 fontWeight={600}
                                                 noWrap
+                                                sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
                                                 title={`${slot.instrument_name} — Grade ${slot.grade}`}
                                             >
                                                 {slot.instrument_name} — Grade {slot.grade}
@@ -144,30 +145,29 @@ export default function CatalogPage() {
                                             label={slot.style_display}
                                             variant="outlined"
                                             color="primary"
-                                            sx={{ alignSelf: 'flex-start', fontSize: '0.7rem' }}
+                                            sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', flexShrink: 0 }}
                                         />
 
                                         {/* Date + time */}
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, overflow: 'hidden' }}>
                                             <EventAvailableIcon fontSize="small" color="success" sx={{ flexShrink: 0 }} />
-                                            <Typography variant="body2">
+                                            <Typography variant="body2" noWrap sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 {new Date(slot.exam_date).toLocaleDateString('vi-VN')} — {slot.start_time}
                                             </Typography>
                                         </Box>
 
-                                        {/* Location — truncate if too long */}
-                                        <Typography
-                                            variant="body2"
-                                            color="text.secondary"
-                                            noWrap
-                                            title={`${slot.center_name}, ${slot.center_city}`}
-                                            sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-                                        >
-                                            📍 {slot.center_name}, {slot.center_city}
-                                        </Typography>
+                                        {/* Location */}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                                            <Typography variant="body2" color="text.secondary" noWrap
+                                                sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                                title={`${slot.center_name}, ${slot.center_city}`}
+                                            >
+                                                📍 {slot.center_name}, {slot.center_city}
+                                            </Typography>
+                                        </Box>
 
                                         {/* Footer: capacity + fee */}
-                                        <Box sx={{ mt: 'auto', pt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Box sx={{ mt: 'auto', pt: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                                             <Chip
                                                 size="small"
                                                 color={slot.available_capacity > 5 ? 'success' : 'warning'}
