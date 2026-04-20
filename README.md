@@ -95,9 +95,10 @@ Học sinh (hoặc phụ huynh) trò chuyện bằng tiếng Việt với trợ 
                                        │ nomic-embed-text
                                        ▼
                           ┌───────────────────────────────────┐
-                          │  Ollama :11434                    │
-                          │  • LLaMA 3.1 8B (agent)          │
-                          │  • nomic-embed-text (embedding)   │
+                          │  LLM backend (pluggable)          │
+                          │  • Ollama LLaMA 3.1 8B (local)   │
+                          │  • OpenAI gpt-4o-mini (prod)      │
+                          │  • Google Gemini Flash (prod)     │
                           └───────────────────────────────────┘
 ```
 
@@ -258,11 +259,12 @@ celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:Da
 | `DATABASE_URL` | SQLAlchemy async URL | `postgresql+asyncpg://postgres:pass@localhost/trinity` |
 | `REDIS_URL` | URL Redis | `redis://localhost:6379/0` |
 | `JWT_SECRET_KEY` | Khóa bí mật JWT dùng chung | *(giống Django)* |
-| `LLM_PROVIDER` | Backend LLM | `ollama` / `openai` / `google` |
+| `LLM_PROVIDER` | Backend LLM | `ollama` (local) / `openai` / `google` |
 | `LLM_MODEL` | Tên model | `llama3.1:8b` / `gpt-4o-mini` |
 | `EMBEDDING_MODEL` | Model embedding | `nomic-embed-text` / `text-embedding-3-small` |
-| `OLLAMA_BASE_URL` | URL server Ollama | `http://localhost:11434` |
-| `OPENAI_API_KEY` | API key OpenAI (nếu dùng) | `sk-...` |
+| `OLLAMA_BASE_URL` | URL server Ollama | `http://ollama:11434` (Docker) |
+| `OPENAI_API_KEY` | API key OpenAI (dùng cho prod) | `sk-...` |
+| `DJANGO_SERVICE_URL` | URL nội bộ Django | `http://django:8000` |
 | `CHROMA_PERSIST_DIR` | Thư mục lưu ChromaDB | `./chromadb_data` |
 | `DOCS_DIR` | Thư mục tài liệu RAG | `../docs` |
 
@@ -304,13 +306,14 @@ trinity_ai/
 │       │   ├── examStore.js    Zustand: trạng thái duyệt catalog
 │       │   └── chatStore.js    Zustand: messages, streaming, pendingConfirm
 │       ├── pages/
-│       │   ├── LoginPage.jsx   Form đăng nhập
+│       │   ├── LoginPage.jsx   Form đăng nhập (bằng email)
+│       │   ├── RegisterPage.jsx Tạo tài khoản mới
 │       │   ├── CatalogPage.jsx Danh mục kỳ thi + filter
-│       │   ├── ChatPage.jsx    Giao diện chat SSE streaming
+│       │   ├── ChatPage.jsx    Giao diện chat SSE streaming (ChatGPT-style)
 │       │   └── BookingsPage.jsx Lịch sử thi
 │       └── components/
 │           ├── Navbar.jsx
-│           ├── ChatBubble.jsx  Render markdown, spinner khi streaming
+│           ├── ChatBubble.jsx  Avatar + full-width bot text, bubble user, blinking cursor
 │           ├── ConfirmBanner.jsx Banner xác nhận trước khi đặt/hủy
 │           └── ProtectedRoute.jsx Route guard kiểm tra auth
 │

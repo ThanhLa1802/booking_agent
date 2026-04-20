@@ -3,7 +3,8 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .serializers import RegisterSerializer, UserProfileSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import RegisterSerializer, UserProfileSerializer, EmailTokenObtainPairSerializer
 
 
 def axes_lockout_response(request, credentials, *args, **kwargs):
@@ -12,6 +13,10 @@ def axes_lockout_response(request, credentials, *args, **kwargs):
         {"detail": "Account locked due to too many failed login attempts. Try again later."},
         status=429,
     )
+
+
+class LoginView(TokenObtainPairView):
+    serializer_class = EmailTokenObtainPairSerializer
 
 
 class RegisterView(APIView):

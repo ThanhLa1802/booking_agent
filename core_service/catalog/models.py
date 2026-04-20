@@ -8,11 +8,12 @@ class StyleChoice(models.TextChoices):
 
 
 class Instrument(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     style = models.CharField(max_length=20, choices=StyleChoice.choices)
     is_active = models.BooleanField(default=True)
 
     class Meta:
+        unique_together = ("name", "style")
         ordering = ["style", "name"]
 
     def __str__(self):

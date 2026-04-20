@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
     Box,
     Button,
@@ -15,6 +15,7 @@ import { login } from '../api'
 
 export default function LoginPage() {
     const navigate = useNavigate()
+    const location = useLocation()
     const { setTokens, setUser } = useAuthStore()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -60,6 +61,11 @@ export default function LoginPage() {
                         Đăng nhập để đặt lịch thi
                     </Typography>
 
+                    {location.state?.registered && (
+                        <Alert severity="success" sx={{ mb: 2 }}>
+                            Đăng ký thành công! Hãy đăng nhập.
+                        </Alert>
+                    )}
                     {error && (
                         <Alert severity="error" sx={{ mb: 2 }}>
                             {error}
@@ -99,6 +105,10 @@ export default function LoginPage() {
                             {loading ? <CircularProgress size={24} /> : 'Đăng nhập'}
                         </Button>
                     </Box>
+                    <Typography variant="body2" align="center" sx={{ mt: 2 }}>
+                        Chưa có tài khoản?{' '}
+                        <Link to="/register" style={{ color: 'inherit' }}>Đăng ký ngay</Link>
+                    </Typography>
                 </Paper>
             </Box>
         </Container>

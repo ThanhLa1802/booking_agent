@@ -45,6 +45,7 @@ services:
         condition: service_healthy
     command: >
       sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
              python manage.py loaddata fixtures/initial_catalog.json fixtures/initial_centers.json || true ;
              gunicorn core_service.wsgi:application --bind 0.0.0.0:8000 --workers 4"
     healthcheck:

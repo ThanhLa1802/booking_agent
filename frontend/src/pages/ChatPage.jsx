@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
     Box,
+    Chip,
     Container,
     IconButton,
     InputAdornment,
@@ -9,6 +10,7 @@ import {
     Typography,
 } from '@mui/material'
 import SendIcon from '@mui/icons-material/Send'
+import SettingsIcon from '@mui/icons-material/Settings'
 import useAuthStore from '../stores/authStore'
 import useChatStore from '../stores/chatStore'
 import useExamStore from '../stores/examStore'
@@ -23,8 +25,8 @@ const CANCEL_SIGNAL = 'hủy bỏ thao tác'
 export default function ChatPage() {
     const { accessToken } = useAuthStore()
     const {
-        messages, streaming, streamingContent, pendingConfirm, sessionId,
-        addUserMessage, startStreaming, appendToken, addToolCall,
+        messages, streaming, streamingContent, activeTools, pendingConfirm, sessionId,
+        addUserMessage, startStreaming, appendToken, addToolCall, removeToolCall,
         finishStreaming, setError, setSessionId, clearPendingConfirm,
     } = useChatStore()
     const { selectedSlot, reset: resetExam } = useExamStore()
@@ -93,6 +95,8 @@ export default function ChatPage() {
                             }
                         } else if (event.type === 'tool_start') {
                             addToolCall(event.tool)
+                        } else if (event.type === 'tool_end') {
+                            removeToolCall(event.tool)
                         } else if (event.type === 'done') {
                             break
                         } else if (event.type === 'error') {
@@ -151,6 +155,20 @@ export default function ChatPage() {
                     ))}
                     {streaming && streamingContent && (
                         <ChatBubble role="assistant" content={streamingContent} streaming />
+                    )}
+                    {streaming && activeTools.length > 0 && !streamingContent && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 0.5, mb: 1.5 }}>
+                            {activeTools.map(tool => (
+                                <Chip
+                                    key={tool}
+                                    icon={<SettingsIcon sx={{ fontSize: 14, animation: 'spin 1.5s linear infinite', '@keyframes spin': { from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } } }} />}
+                                    label={tool.replace(/_/g, ' ')}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ fontSize: '0.75rem', color: 'text.secondary' }}
+                                />
+                            ))}
+                        </Box>
                     )}
                     <div ref={bottomRef} />
                 </Box>

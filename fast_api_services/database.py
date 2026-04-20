@@ -26,3 +26,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     _, session_factory = _get_engine()
     async with session_factory() as session:
         yield session
+
+
+def get_session_factory():
+    """Return the async session factory for use outside of FastAPI dependency injection."""
+    _, session_factory = _get_engine()
+    return session_factory

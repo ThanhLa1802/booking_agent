@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from fast_api_services.config import get_settings
 from fast_api_services.services.booking_service import get_booking, list_user_bookings
@@ -34,7 +34,7 @@ _CONFIRM_REQUIRED = (
 
 @dataclass
 class ToolContext:
-    db: AsyncSession
+    session_factory: async_sessionmaker  # each tool opens its own session
     redis: Any  # aioredis client
     user_id: int
     embeddings: Any  # Embeddings (lazy type to avoid heavy import)
@@ -78,7 +78,8 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         """
         from fast_api_services.services.catalog_service import list_courses as _list
 
-        courses = await _list(ctx.db, style=style, grade=grade)
+        async with ctx.session_factory() as db:
+            courses = await _list(db, style=style, grade=grade)
         if not courses:
             return "No courses found."
         lines = [
@@ -105,7 +106,8 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         Returns:
             Formatted slot list with availability counts.
         """
-        slots = await _list_slots(ctx.db, course_id, city, date_from, date_to)
+        async with ctx.session_factory() as db:
+            slots = await _list_slots(db, course_id, city, date_from, date_to)
         if not slots:
             return "No available slots found."
         lines = []
@@ -128,7 +130,8 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         Returns:
             Booking details or error message.
         """
-        booking = await get_booking(ctx.db, booking_id, ctx.user_id)
+        async with ctx.session_factory() as db:
+            booking = await get_booking(db, booking_id, ctx.user_id)
         if booking is None:
             return f"Booking {booking_id} not found."
         d = booking.slot_detail
@@ -146,7 +149,8 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         Returns:
             Summary of all bookings.
         """
-        bookings = await list_user_bookings(ctx.db, ctx.user_id)
+        async with ctx.session_factory() as db:
+            bookings = await list_user_bookings(db, ctx.user_id)
         if not bookings:
             return "You have no bookings yet."
         lines = [

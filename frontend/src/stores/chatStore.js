@@ -7,6 +7,7 @@ const useChatStore = create((set, get) => ({
     messages: [],          // [{ role: 'user'|'assistant', content: string, toolCalls?: [] }]
     streaming: false,      // true while SSE is open
     streamingContent: '',  // partial assistant message being built
+    activeTools: [],       // tool names currently executing (shown as chips)
     pendingConfirm: false, // true when agent returns confirmation-required warning
     sessionId: null,
     error: null,
@@ -18,19 +19,25 @@ const useChatStore = create((set, get) => ({
             messages: [...state.messages, { role: 'user', content }],
         })),
 
-    startStreaming: () => set({ streaming: true, streamingContent: '', error: null }),
+    startStreaming: () => set({ streaming: true, streamingContent: '', activeTools: [], error: null }),
 
     appendToken: (token) =>
         set((state) => ({ streamingContent: state.streamingContent + token })),
 
     addToolCall: (toolName) =>
         set((state) => ({
-            streamingContent: state.streamingContent + `\n\n⚙️ *${toolName}...*\n\n`,
+            activeTools: [...state.activeTools.filter(t => t !== toolName), toolName],
+        })),
+
+    removeToolCall: (toolName) =>
+        set((state) => ({
+            activeTools: state.activeTools.filter(t => t !== toolName),
         })),
 
     finishStreaming: (pendingConfirm = false) =>
         set((state) => ({
             streaming: false,
+            activeTools: [],
             pendingConfirm,
             messages: [
                 ...state.messages,

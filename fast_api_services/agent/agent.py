@@ -45,13 +45,13 @@ def _build_prompt():
 
 def create_agent(llm, tools: list, chat_history=None):
     """
-    Create a ReAct AgentExecutor.
+    Create an AgentExecutor using tool-calling (OpenAI function calling).
     chat_history is injected per-request from Redis-backed memory.
     """
-    from langchain.agents import AgentExecutor, create_react_agent  # lazy
+    from langchain.agents import AgentExecutor, create_tool_calling_agent  # lazy
 
     prompt = _build_prompt()
-    agent = create_react_agent(llm, tools, prompt)
+    agent = create_tool_calling_agent(llm, tools, prompt)
     return AgentExecutor(
         agent=agent,
         tools=tools,

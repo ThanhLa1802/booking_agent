@@ -1,6 +1,8 @@
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.db import transaction
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import UserProfile, UserRole
 
 
@@ -42,6 +44,39 @@ class RegisterSerializer(serializers.Serializer):
             date_of_birth=date_of_birth,
         )
         return user
+
+
+class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Accept email + password instead of username + password."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["email"] = serializers.EmailField()
+        del self.fields[self.username_field]
+
+    def validate(self, attrs):
+        email = attrs.pop("email")
+        try:
+            user_obj = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError({"email": "Không tìm thấy tài khoản với email này."})
+        attrs[self.username_field] = user_obj.username
+        data = super().validate(attrs)
+        # Include basic user info so frontend can hydrate the store
+        data["user"] = {
+            "id": user_obj.id,
+            "username": user_obj.username,
+            "email": user_obj.email,
+            "role": getattr(getattr(user_obj, "profile", None), "role", "STUDENT"),
+        }
+        return data
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token["username"] = user.username
+        token["email"] = user.email
+        return token
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

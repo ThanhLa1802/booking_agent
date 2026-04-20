@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_api_services.auth import get_current_user
 from fast_api_services.config import get_settings
-from fast_api_services.database import get_db
+from fast_api_services.database import get_db, get_session_factory
 
 # Heavy AI imports are lazy (inside endpoint) to avoid torch/numpy BLAS crash
 
@@ -49,12 +49,12 @@ class ChatResponse(BaseModel):
 @router.post("/agent/chat")
 async def chat(
     request: ChatRequest,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
 ) -> EventSourceResponse:
     """Stream agent responses via Server-Sent Events."""
-    user_id: int = current_user["user_id"]
+    user_id: int = current_user.user_id
     settings = get_settings()
+    session_factory = get_session_factory()
 
     async def event_stream() -> AsyncGenerator[dict, None]:
         # ── lazy imports to avoid torch/numpy crash at module load ─────────
@@ -71,7 +71,7 @@ async def chat(
         llm = get_llm()
 
         ctx = ToolContext(
-            db=db,
+            session_factory=session_factory,
             redis=redis,
             user_id=user_id,
             embeddings=embeddings,
