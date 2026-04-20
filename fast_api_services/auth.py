@@ -15,6 +15,7 @@ _bearer = HTTPBearer()
 class TokenPayload(BaseModel):
     user_id: int
     username: str = ""
+    raw_token: str = ""  # original JWT — forwarded to Django for internal service calls
 
 
 def _decode_token(token: str) -> TokenPayload:
@@ -44,7 +45,9 @@ def _decode_token(token: str) -> TokenPayload:
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
 ) -> TokenPayload:
-    return _decode_token(credentials.credentials)
+    payload = _decode_token(credentials.credentials)
+    payload.raw_token = credentials.credentials
+    return payload
 
 
 # Optional auth — returns None if no token provided (for public endpoints)

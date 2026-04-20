@@ -37,6 +37,7 @@ class ToolContext:
     session_factory: async_sessionmaker  # each tool opens its own session
     redis: Any  # aioredis client
     user_id: int
+    user_token: str  # JWT access token — forwarded to Django for write calls
     embeddings: Any  # Embeddings (lazy type to avoid heavy import)
     persist_dir: str
 
@@ -195,13 +196,12 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
             "notes": notes,
             "confirm": True,
         }
-        headers: dict[str, str] = {}  # auth handled by Django via shared secret or user token
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(
                     f"{settings.django_service_url}/api/bookings/",
                     json=payload,
-                    headers={"X-User-Id": str(ctx.user_id), **headers},
+                    headers={"Authorization": f"Bearer {ctx.user_token}"},
                 )
             if resp.status_code == 201:
                 data = resp.json()
@@ -238,7 +238,7 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
                 resp = await client.post(
                     f"{settings.django_service_url}/api/bookings/{booking_id}/cancel/",
                     json={"reason": reason, "confirm": True},
-                    headers={"X-User-Id": str(ctx.user_id)},
+                    headers={"Authorization": f"Bearer {ctx.user_token}"},
                 )
             if resp.status_code == 200:
                 return f"✅ Booking #{booking_id} cancelled."

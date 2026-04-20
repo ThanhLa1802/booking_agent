@@ -74,6 +74,7 @@ async def chat(
             session_factory=session_factory,
             redis=redis,
             user_id=user_id,
+            user_token=current_user.raw_token,
             embeddings=embeddings,
             persist_dir=settings.chroma_persist_dir,
         )
