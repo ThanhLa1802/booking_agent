@@ -116,7 +116,9 @@ async def list_available_slots(
         JOIN centers_examcenter ec ON ec.id = s.center_id
         JOIN catalog_course c ON c.id = s.course_id
         JOIN catalog_instrument i ON i.id = c.instrument_id
-        WHERE s.is_active = true AND s.reserved_count < s.capacity
+        WHERE s.is_active = true
+          AND s.reserved_count < s.capacity
+          AND s.exam_date >= CURRENT_DATE
     """
     params: dict = {}
     if course_id:

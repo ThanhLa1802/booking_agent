@@ -113,9 +113,9 @@ export default function CatalogPage() {
                     <Typography color="text.secondary">Không có slot nào khả dụng.</Typography>
                 )}
 
-                <Grid container spacing={2}>
+                <Grid container spacing={2} alignItems="stretch">
                     {slots.map((slot) => (
-                        <Grid item xs={12} sm={6} md={4} key={slot.id}>
+                        <Grid item xs={12} sm={6} md={4} key={slot.id} sx={{ display: 'flex' }}>
                             <Card
                                 variant="outlined"
                                 sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
