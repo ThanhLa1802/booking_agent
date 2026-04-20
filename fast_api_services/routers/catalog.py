@@ -48,6 +48,8 @@ async def get_available_slots(
     course: Optional[int] = Query(None),
     center: Optional[int] = Query(None),
     city: Optional[str] = Query(None),
+    style: Optional[str] = Query(None, description="CLASSICAL_JAZZ | ROCK_POP | THEORY"),
+    grade: Optional[int] = Query(None, ge=1, le=8),
     date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
@@ -57,6 +59,8 @@ async def get_available_slots(
         course_id=course,
         center_id=center,
         city=city,
+        style=style,
+        grade=grade,
         date_from=date_from,
         date_to=date_to,
     )

@@ -25,9 +25,9 @@ import Navbar from '../components/Navbar'
 
 const STYLES = [
     { value: '', label: 'Tất cả' },
-    { value: 'classical_jazz', label: 'Classical & Jazz' },
-    { value: 'rock_pop', label: 'Rock & Pop' },
-    { value: 'theory', label: 'Lý thuyết âm nhạc' },
+    { value: 'CLASSICAL_JAZZ', label: 'Classical & Jazz' },
+    { value: 'ROCK_POP', label: 'Rock & Pop' },
+    { value: 'THEORY', label: 'Lý thuyết âm nhạc' },
 ]
 
 export default function CatalogPage() {
@@ -46,7 +46,7 @@ export default function CatalogPage() {
             setLoading(true)
             try {
                 const params = {}
-                if (styleFilter) params.exam_type = styleFilter
+                if (styleFilter) params.style = styleFilter
                 if (gradeFilter) params.grade = gradeFilter
                 const [coursesRes, slotsRes] = await Promise.all([
                     getCourses(params),

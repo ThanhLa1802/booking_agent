@@ -103,6 +103,8 @@ async def list_available_slots(
     course_id: Optional[int] = None,
     center_id: Optional[int] = None,
     city: Optional[str] = None,
+    style: Optional[str] = None,
+    grade: Optional[int] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
 ) -> list[ExamSlotOut]:
@@ -130,6 +132,12 @@ async def list_available_slots(
     if city:
         query += " AND LOWER(ec.city) LIKE :city"
         params["city"] = f"%{city.lower()}%"
+    if style:
+        query += " AND i.style = :style"
+        params["style"] = style
+    if grade:
+        query += " AND c.grade = :grade"
+        params["grade"] = grade
     if date_from:
         query += " AND s.exam_date >= :date_from"
         params["date_from"] = date_from
