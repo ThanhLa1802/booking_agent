@@ -112,7 +112,7 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
             return "No available slots found."
         lines = []
         for s in slots:
-            avail = await get_slot_availability(ctx.redis, s.id)
+            avail = await get_slot_availability(s.id)
             remaining = avail if avail is not None else "?"
             lines.append(
                 f"[Slot {s.id}] {s.center_name}, {s.center_city} — "

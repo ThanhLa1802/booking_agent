@@ -38,6 +38,7 @@ services:
       DB_HOST: db
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
+      ALLOWED_HOSTS: "localhost,127.0.0.1,django,nginx"
     depends_on:
       db:
         condition: service_healthy
