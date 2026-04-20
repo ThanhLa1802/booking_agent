@@ -44,9 +44,8 @@ export default function ChatPage() {
     useEffect(() => {
         if (selectedSlot) {
             setInput(
-                `Tôi muốn đặt lịch thi slot ${selectedSlot.id} — ${selectedSlot.instrument} Grade ${selectedSlot.grade} vào ngày ${new Date(selectedSlot.exam_date).toLocaleDateString('vi-VN')}`
+                `Tôi muốn đặt lịch thi slot ${selectedSlot.id} — ${selectedSlot.instrument_name} Grade ${selectedSlot.grade} vào ngày ${new Date(selectedSlot.exam_date).toLocaleDateString('vi-VN')}`
             )
-            resetExam()
         }
     }, [selectedSlot])
 
@@ -119,6 +118,7 @@ export default function ChatPage() {
 
     const handleSubmit = (e) => {
         e.preventDefault()
+        resetExam()
         sendMessage(input)
     }
 
