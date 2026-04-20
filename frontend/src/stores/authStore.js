@@ -11,6 +11,7 @@ const useAuthStore = create(
             accessToken: null,       // in-memory only
             refreshToken: null,      // persisted
             user: null,              // { id, email, role }
+            isHydrating: true,       // true until first token refresh attempt completes
 
             setTokens: (accessToken, refreshToken) =>
                 set({ accessToken, refreshToken }),
@@ -18,6 +19,8 @@ const useAuthStore = create(
             setUser: (user) => set({ user }),
 
             setAccessToken: (accessToken) => set({ accessToken }),
+
+            setHydrated: () => set({ isHydrating: false }),
 
             logout: () => set({ accessToken: null, refreshToken: null, user: null }),
 
