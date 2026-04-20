@@ -1,3 +1,4 @@
+from datetime import date as date_type
 from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -140,10 +141,10 @@ async def list_available_slots(
         params["grade"] = grade
     if date_from:
         query += " AND s.exam_date >= :date_from"
-        params["date_from"] = date_from
+        params["date_from"] = date_type.fromisoformat(date_from)
     if date_to:
         query += " AND s.exam_date <= :date_to"
-        params["date_to"] = date_to
+        params["date_to"] = date_type.fromisoformat(date_to)
     query += " ORDER BY s.exam_date, s.start_time"
     rows = (await db.execute(text(query), params)).mappings().all()
     return [
