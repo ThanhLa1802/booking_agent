@@ -19,7 +19,7 @@ import {
 } from '@mui/material'
 import MusicNoteIcon from '@mui/icons-material/MusicNote'
 import EventAvailableIcon from '@mui/icons-material/EventAvailable'
-import { getCourses, getSlots } from '../api'
+import { getSlots } from '../api'
 import useExamStore from '../stores/examStore'
 import Navbar from '../components/Navbar'
 
@@ -33,9 +33,8 @@ const STYLES = [
 export default function CatalogPage() {
     const navigate = useNavigate()
     const {
-        instruments, grades, slots, selectedStyle,
-        setInstruments, setGrades, setSlots,
-        selectStyle, selectSlot, loading, error, setLoading, setError,
+        slots, selectSlot,
+        setSlots, loading, error, setLoading, setError,
     } = useExamStore()
 
     const [styleFilter, setStyleFilter] = useState('')
@@ -48,12 +47,7 @@ export default function CatalogPage() {
                 const params = {}
                 if (styleFilter) params.style = styleFilter
                 if (gradeFilter) params.grade = gradeFilter
-                const [coursesRes, slotsRes] = await Promise.all([
-                    getCourses(params),
-                    getSlots({ available_only: true, ...params }),
-                ])
-                setInstruments(coursesRes.data.instruments || [])
-                setGrades(coursesRes.data.grades || [])
+                const slotsRes = await getSlots(params)
                 setSlots(slotsRes.data || [])
             } catch (err) {
                 setError(err.response?.data?.detail || 'Không thể tải dữ liệu.')
