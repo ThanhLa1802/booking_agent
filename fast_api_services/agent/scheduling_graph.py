@@ -12,8 +12,11 @@ Graph topology:
 """
 from __future__ import annotations
 
+import calendar as _calendar
 import json
 import logging
+import re as _re
+from datetime import date as _date
 from typing import Any
 
 import httpx
@@ -24,6 +27,23 @@ from fast_api_services.config import get_settings
 from .state import SchedulingState
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_date_range(text: str):
+    """Extract (date_from, date_to) strings from Vietnamese natural language."""
+    today = _date.today()
+    year = today.year
+    m = _re.search(r"tháng\s*(\d{1,2})(?:\s*(?:năm\s*)?(\d{4}))?", text, _re.I)
+    if m:
+        month = int(m.group(1))
+        y = int(m.group(2)) if m.group(2) else year
+        if 1 <= month <= 12:
+            last = _calendar.monthrange(y, month)[1]
+            return f"{y:04d}-{month:02d}-01", f"{y:04d}-{month:02d}-{last:02d}"
+    r = _re.search(r"(\d{4}-\d{2}-\d{2})\s*(?:đến|to|-)\s*(\d{4}-\d{2}-\d{2})", text)
+    if r:
+        return r.group(1), r.group(2)
+    return None, None
 
 
 # ── node: classify ────────────────────────────────────────────────────────────
@@ -75,15 +95,22 @@ def _make_fetch_node(tools: list):
         task_type = state.get("task_type", "general")
         fetched_text = ""
 
+        date_from, date_to = _extract_date_range(user_msg)
+        cal_args: dict = {}
+        if date_from:
+            cal_args["date_from"] = date_from
+        if date_to:
+            cal_args["date_to"] = date_to
+
         if task_type == "view_calendar":
             tool = tool_map.get("get_exam_calendar")
             if tool:
-                fetched_text = await tool.ainvoke({})
+                fetched_text = await tool.ainvoke(cal_args)
         elif task_type == "assign_examiner":
             # Try to extract slot_id from the message
             tool = tool_map.get("get_exam_calendar")
             if tool:
-                fetched_text = await tool.ainvoke({})
+                fetched_text = await tool.ainvoke(cal_args)
         elif task_type == "reschedule":
             # For reschedule we just summarise — let propose_node do the heavy lifting
             fetched_text = f"Received reschedule request: {user_msg}"
@@ -106,8 +133,16 @@ def _make_propose_node(llm, tools: list):
 
         # For view_calendar and general, no confirmation needed — just reply directly
         if task_type in ("view_calendar", "general"):
-            # Summarise the fetched data using the LLM
-            response = await llm.ainvoke(state["messages"])
+            system = SystemMessage(
+                content=(
+                    "Bạn là trợ lý xếp lịch thi cho quản trị viên trung tâm. "
+                    "Dựa vào dữ liệu đã lấy từ hệ thống (dòng bắt đầu bằng [FETCH]), "
+                    "hãy trả lời bằng tiếng Việt một cách rõ ràng và đầy đủ. "
+                    "Nếu không có dữ liệu [FETCH], hãy thông báo không tìm thấy slot nào "
+                    "trong khoảng thời gian yêu cầu."
+                )
+            )
+            response = await llm.ainvoke([system] + state["messages"])
             return {
                 "messages": [AIMessage(content=response.content)],
                 "proposal": None,
@@ -132,11 +167,13 @@ def _make_propose_node(llm, tools: list):
         response = await llm.ainvoke([system] + state["messages"])
         proposal_text = response.content
 
-        # Store structured proposal for execute_node
+        # Store structured proposal for execute_node — preserve conversation for ID extraction
         proposal = {
             "task_type": task_type,
             "description": proposal_text,
-            # extract slot/examiner IDs from context if possible — execute_node re-parses
+            "conversation_messages": [
+                m.content for m in state["messages"] if hasattr(m, "content")
+            ],
         }
         return {
             "messages": [AIMessage(content=proposal_text)],
@@ -199,10 +236,9 @@ def _make_execute_node(tools: list):
         proposal = state.get("proposal") or {}
         task_type = proposal.get("task_type", state.get("task_type", "general"))
 
-        # Re-parse the conversation to extract IDs for the write call
-        messages_text = " ".join(
-            m.content for m in state["messages"] if hasattr(m, "content")
-        )
+        # Extract IDs from stored proposal conversation (preserves IDs from turn 1 when confirming on turn 2)
+        proposal_messages = proposal.get("conversation_messages", [])
+        messages_text = " ".join(proposal_messages) if proposal_messages else ""
 
         result = "❌ Could not determine the action to execute."
 
