@@ -97,7 +97,7 @@ async def create_booking(
                     "student_dob": str(payload.student_dob),
                     "notes": payload.notes,
                 },
-                headers={"X-Internal-User-Id": str(current_user.user_id)},
+                headers={"Authorization": f"Bearer {current_user.raw_token}"},
             )
             resp.raise_for_status()
             data = resp.json()
@@ -143,7 +143,7 @@ async def cancel_booking(
             resp = await client.post(
                 f"/api/bookings/{booking_id}/cancel/",
                 json={"reason": payload.reason},
-                headers={"X-Internal-User-Id": str(current_user.user_id)},
+                headers={"Authorization": f"Bearer {current_user.raw_token}"},
             )
             resp.raise_for_status()
     except HTTPStatusError as exc:

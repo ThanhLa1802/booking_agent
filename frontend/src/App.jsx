@@ -22,7 +22,7 @@ const theme = createTheme({
 })
 
 function TokenRefreshGate({ children }) {
-  const { refreshToken, setAccessToken, setHydrated, logout } = useAuthStore()
+  const { refreshToken, setTokens, setHydrated, logout } = useAuthStore()
 
   useEffect(() => {
     if (!refreshToken) {
@@ -30,7 +30,7 @@ function TokenRefreshGate({ children }) {
       return
     }
     refreshAccessToken(refreshToken)
-      .then((res) => setAccessToken(res.data.access))
+      .then((res) => setTokens(res.data.access, res.data.refresh))
       .catch(() => logout())
       .finally(() => setHydrated())
   }, [])

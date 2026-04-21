@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
     Alert,
     Box,
@@ -15,30 +15,31 @@ import {
     Typography,
 } from '@mui/material'
 import { getMyBookings } from '../api'
-import useExamStore from '../stores/examStore'
 import Navbar from '../components/Navbar'
 
 const STATUS_COLOR = {
-    confirmed: 'success',
-    pending: 'warning',
-    cancelled: 'error',
-    completed: 'default',
+    CONFIRMED: 'success',
+    PENDING: 'warning',
+    CANCELLED: 'error',
+    COMPLETED: 'default',
 }
 
 const STATUS_LABEL = {
-    confirmed: 'Đã xác nhận',
-    pending: 'Chờ xác nhận',
-    cancelled: 'Đã hủy',
-    completed: 'Hoàn thành',
+    CONFIRMED: 'Đã xác nhận',
+    PENDING: 'Chờ xác nhận',
+    CANCELLED: 'Đã hủy',
+    COMPLETED: 'Hoàn thành',
 }
 
 export default function BookingsPage() {
-    const { slots: bookings, setSlots: setBookings, loading, error, setLoading, setError } =
-        useExamStore()
+    const [bookings, setBookings] = useState([])
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState(null)
 
     useEffect(() => {
         const fetch = async () => {
             setLoading(true)
+            setError(null)
             try {
                 const res = await getMyBookings()
                 setBookings(res.data || [])
@@ -76,12 +77,12 @@ export default function BookingsPage() {
                             <TableHead>
                                 <TableRow>
                                     <TableCell>Mã đặt lịch</TableCell>
+                                    <TableCell>Học viên</TableCell>
                                     <TableCell>Môn thi</TableCell>
-                                    <TableCell>Cấp độ</TableCell>
-                                    <TableCell>Loại hình</TableCell>
+                                    <TableCell>Trung tâm</TableCell>
                                     <TableCell>Ngày thi</TableCell>
                                     <TableCell>Giờ thi</TableCell>
-                                    <TableCell>Lệ phí</TableCell>
+                                    <TableCell>Thành phố</TableCell>
                                     <TableCell>Trạng thái</TableCell>
                                 </TableRow>
                             </TableHead>
@@ -89,18 +90,16 @@ export default function BookingsPage() {
                                 {bookings.map((b) => (
                                     <TableRow key={b.id} hover>
                                         <TableCell>#{b.id}</TableCell>
-                                        <TableCell>{b.slot?.instrument || '—'}</TableCell>
-                                        <TableCell>Grade {b.slot?.grade || '—'}</TableCell>
-                                        <TableCell>{b.slot?.exam_type_display || b.slot?.exam_type || '—'}</TableCell>
+                                        <TableCell>{b.student_name}</TableCell>
+                                        <TableCell>{b.slot_detail?.course || '—'}</TableCell>
+                                        <TableCell>{b.slot_detail?.center || '—'}</TableCell>
                                         <TableCell>
-                                            {b.slot?.exam_date
-                                                ? new Date(b.slot.exam_date).toLocaleDateString('vi-VN')
+                                            {b.slot_detail?.exam_date
+                                                ? new Date(b.slot_detail.exam_date).toLocaleDateString('vi-VN')
                                                 : '—'}
                                         </TableCell>
-                                        <TableCell>{b.slot?.start_time || '—'}</TableCell>
-                                        <TableCell>
-                                            {b.slot?.fee ? `${Number(b.slot.fee).toLocaleString('vi-VN')}đ` : '—'}
-                                        </TableCell>
+                                        <TableCell>{b.slot_detail?.start_time || '—'}</TableCell>
+                                        <TableCell>{b.slot_detail?.city || '—'}</TableCell>
                                         <TableCell>
                                             <Chip
                                                 size="small"

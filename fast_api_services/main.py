@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
         title="Trinity Exam — Read & Agent API",
         version="0.1.0",
         lifespan=lifespan,
+        redirect_slashes=False,  # prevent 307 redirects that drop Authorization header
     )
 
     app.add_middleware(

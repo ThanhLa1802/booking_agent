@@ -15,7 +15,7 @@ export const getSlots = (params) =>
     apiClient.get('/api/catalog/slots', { params })
 
 // Bookings — FastAPI reads
-export const getMyBookings = () => apiClient.get('/api/bookings/')
+export const getMyBookings = () => apiClient.get('/api/bookings')
 
 export const getBookingDetail = (id) => apiClient.get(`/api/bookings/${id}`)
 
