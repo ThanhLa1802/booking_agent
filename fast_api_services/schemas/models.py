@@ -101,3 +101,43 @@ class BookingCreateIn(BaseModel):
 class BookingCancelIn(BaseModel):
     reason: str = ""
     confirm: bool = False
+
+
+# ── Scheduling — Examiners ────────────────────────────────────────────────────
+
+class ExaminerOut(BaseModel):
+    id: int
+    center_id: int
+    name: str
+    email: str
+    phone: str
+    specialization_names: list[str]
+    max_exams_per_day: int
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ExaminerAvailabilityOut(BaseModel):
+    examiner: ExaminerOut
+    is_available: bool
+    exams_today: int
+
+
+class ExamSlotScheduleOut(ExamSlotOut):
+    """ExamSlotOut extended with the assigned examiner (nullable)."""
+    examiner_id: Optional[int] = None
+    examiner_name: Optional[str] = None
+
+
+# ── Scheduling — Reschedule ───────────────────────────────────────────────────
+
+class RescheduleBookingIn(BaseModel):
+    new_slot_id: int
+    reason: str = ""
+    confirm: bool = False
+
+
+class AssignExaminerIn(BaseModel):
+    examiner_id: int
+    confirm: bool = False

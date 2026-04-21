@@ -167,3 +167,87 @@ async def list_available_slots(
         )
         for r in rows
     ]
+
+
+async def suggest_slots_for_reschedule(
+    db: AsyncSession,
+    booking_id: int,
+    user_id: int,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    city: Optional[str] = None,
+) -> list[ExamSlotOut]:
+    """
+    Suggest alternative available slots for an existing booking.
+    Returns slots for the same course, in the future, with available capacity,
+    excluding the slot the booking is already on.
+    """
+    # fetch the booking's current slot and course
+    booking_row = (
+        await db.execute(
+            text(
+                "SELECT b.slot_id, s.course_id "
+                "FROM bookings_booking b "
+                "JOIN centers_examslot s ON s.id = b.slot_id "
+                "WHERE b.id = :bid AND b.user_id = :uid AND b.status != 'CANCELLED'"
+            ),
+            {"bid": booking_id, "uid": user_id},
+        )
+    ).mappings().first()
+
+    if not booking_row:
+        return []
+
+    current_slot_id = booking_row["slot_id"]
+    course_id = booking_row["course_id"]
+
+    query = """
+        SELECT s.id, s.exam_date, s.start_time, s.capacity, s.reserved_count,
+               s.course_id, s.center_id,
+               ec.name AS center_name, ec.city AS center_city,
+               c.name AS course_name, c.grade, c.fee,
+               i.name AS instrument_name, i.style
+        FROM centers_examslot s
+        JOIN centers_examcenter ec ON ec.id = s.center_id
+        JOIN catalog_course c ON c.id = s.course_id
+        JOIN catalog_instrument i ON i.id = c.instrument_id
+        WHERE s.is_active = true
+          AND s.reserved_count < s.capacity
+          AND s.exam_date >= CURRENT_DATE
+          AND s.course_id = :course_id
+          AND s.id != :current_slot_id
+    """
+    params: dict = {"course_id": course_id, "current_slot_id": current_slot_id}
+
+    if date_from:
+        query += " AND s.exam_date >= :date_from"
+        params["date_from"] = date_type.fromisoformat(date_from)
+    if date_to:
+        query += " AND s.exam_date <= :date_to"
+        params["date_to"] = date_type.fromisoformat(date_to)
+    if city:
+        query += " AND LOWER(ec.city) LIKE :city"
+        params["city"] = f"%{city.lower()}%"
+
+    query += " ORDER BY s.exam_date, s.start_time LIMIT 10"
+    rows = (await db.execute(text(query), params)).mappings().all()
+    return [
+        ExamSlotOut(
+            id=r["id"],
+            center_id=r["center_id"],
+            center_name=r["center_name"],
+            center_city=r["center_city"],
+            course_id=r["course_id"],
+            course_name=r["course_name"],
+            instrument_name=r["instrument_name"],
+            grade=r["grade"],
+            style=r["style"],
+            style_display=STYLE_LABELS.get(r["style"], r["style"]),
+            fee=r["fee"],
+            exam_date=r["exam_date"],
+            start_time=r["start_time"],
+            capacity=r["capacity"],
+            available_capacity=r["capacity"] - r["reserved_count"],
+        )
+        for r in rows
+    ]

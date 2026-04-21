@@ -39,6 +39,7 @@ class ToolContext:
     user_token: str  # JWT access token — forwarded to Django for write calls
     embeddings: Any  # Embeddings (lazy type to avoid heavy import)
     persist_dir: str
+    user_role: str = "STUDENT"  # "STUDENT" | "PARENT" | "CENTER_ADMIN"
 
 
 def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
@@ -244,6 +245,18 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
             logger.error("cancel_booking error: %s", exc)
             return f"❌ Error cancelling booking: {exc}"
 
+    from fast_api_services.agent.scheduling_tools import (
+        SchedulingToolContext,
+        make_reschedule_tools,
+    )
+
+    reschedule_ctx = SchedulingToolContext(
+        session_factory=ctx.session_factory,
+        user_token=ctx.user_token,
+        center_id=0,  # not used by reschedule tools
+    )
+    reschedule_tools = make_reschedule_tools(reschedule_ctx, ctx.user_id)
+
     return [
         search_exam_docs,
         list_courses,
@@ -252,6 +265,7 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         list_my_bookings,
         create_booking,
         cancel_booking,
+        *reschedule_tools,
     ]
 
 

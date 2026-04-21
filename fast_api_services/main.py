@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
-from .routers import catalog, bookings, agent as agent_router
+from .routers import catalog, bookings, agent as agent_router, scheduling as scheduling_router
 
 
 @asynccontextmanager
@@ -52,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router, prefix="/api")
     app.include_router(bookings.router, prefix="/api")
     app.include_router(agent_router.router, prefix="/api")
+    app.include_router(scheduling_router.router, prefix="/api")
 
     @app.get("/health")
     async def health():

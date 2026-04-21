@@ -14,8 +14,11 @@ def mock_ctx():
     ctx.db = AsyncMock()
     ctx.redis = AsyncMock()
     ctx.user_id = 42
+    ctx.user_token = "test.jwt.token"
+    ctx.session_factory = MagicMock()
     ctx.embeddings = MagicMock()
     ctx.persist_dir = "./test_chroma"
+    ctx.user_role = "STUDENT"
     return ctx
 
 
@@ -161,9 +164,9 @@ async def test_search_exam_docs_no_results(mock_ctx):
 # ── Tool count ────────────────────────────────────────────────────────────────
 
 def test_make_tools_returns_seven(mock_ctx):
-    """make_tools must return exactly 7 tools."""
+    """make_tools must return exactly 9 tools (7 booking + 2 reschedule)."""
     tools = make_tools(mock_ctx)
-    assert len(tools) == 7
+    assert len(tools) == 9
 
 
 def test_tool_names(mock_ctx):
@@ -178,5 +181,7 @@ def test_tool_names(mock_ctx):
         "list_my_bookings",
         "create_booking",
         "cancel_booking",
+        "suggest_slots_for_reschedule",
+        "reschedule_booking",
     }
     assert expected == names

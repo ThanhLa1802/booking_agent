@@ -61,14 +61,44 @@ async def chat(
         from fast_api_services.agent.agent import create_agent
         from fast_api_services.agent.llm import get_embeddings, get_llm
         from fast_api_services.agent.memory import load_history, save_history
+        from fast_api_services.agent.scheduling_tools import (
+            SchedulingToolContext,
+            make_reschedule_tools,
+            make_scheduling_tools,
+        )
+        from fast_api_services.agent.supervisor import create_supervisor_graph
         from fast_api_services.agent.tools import ToolContext, make_tools
-
-        # ── setup ──────────────────────────────────────────────────────────
         from fast_api_services.services.slot_cache import get_redis_client
 
+        # ── setup ──────────────────────────────────────────────────────────
         redis = await get_redis_client()
         embeddings = get_embeddings()
         llm = get_llm()
+
+        # ── resolve user_role from DB ──────────────────────────────────────
+        user_role = "STUDENT"
+        center_id = 0
+        try:
+            async with session_factory() as db:
+                from sqlalchemy import text
+                row = await db.execute(
+                    text(
+                        "SELECT up.role, ec.id AS center_id "
+                        "FROM accounts_userprofile up "
+                        "LEFT JOIN centers_examcenter ec ON ec.id = ("
+                        "  SELECT id FROM centers_examcenter "
+                        "  WHERE admin_id = up.user_id LIMIT 1"
+                        ") "
+                        "WHERE up.user_id = :uid"
+                    ),
+                    {"uid": user_id},
+                )
+                profile = row.fetchone()
+                if profile:
+                    user_role = profile.role or "STUDENT"
+                    center_id = profile.center_id or 0
+        except Exception as exc:
+            logger.warning("Could not fetch user_role for %s: %s", user_id, exc)
 
         ctx = ToolContext(
             session_factory=session_factory,
@@ -77,17 +107,46 @@ async def chat(
             user_token=current_user.raw_token,
             embeddings=embeddings,
             persist_dir=settings.chroma_persist_dir,
+            user_role=user_role,
         )
-        tools = make_tools(ctx)
+        booking_tools = make_tools(ctx)
         chat_history = await load_history(redis, user_id)
-        agent_executor = create_agent(llm, tools, chat_history)
+
+        sched_ctx = SchedulingToolContext(
+            session_factory=session_factory,
+            user_token=current_user.raw_token,
+            center_id=center_id,
+        )
+        scheduling_tools = (
+            make_scheduling_tools(sched_ctx)
+            + make_reschedule_tools(sched_ctx, user_id)
+        )
+
+        supervisor = create_supervisor_graph(
+            booking_tools=booking_tools,
+            scheduling_tools=scheduling_tools,
+            llm=llm,
+            chat_history=chat_history,
+        )
+
+        from langchain_core.messages import HumanMessage
+
+        initial_state = {
+            "messages": [HumanMessage(content=request.message)],
+            "user_role": user_role,
+            "task_type": "general",
+            "proposal": None,
+            "confirmed": False,
+            "thread_id": str(user_id),
+        }
 
         final_output = ""
 
         try:
-            async for event in agent_executor.astream_events(
-                {"input": request.message, "chat_history": chat_history},
+            async for event in supervisor.astream_events(
+                initial_state,
                 version="v2",
+                config={"configurable": {"thread_id": str(user_id)}},
             ):
                 kind = event.get("event", "")
                 name = event.get("name", "")
@@ -125,17 +184,16 @@ async def chat(
                         )
                     }
 
-                elif kind == "on_chain_end" and name == "AgentExecutor":
+                elif kind == "on_chain_end":
                     output = event.get("data", {}).get("output", {})
                     if isinstance(output, dict):
-                        final_output = output.get("output", final_output)
-                    elif isinstance(output, str):
-                        final_output = output
+                        msgs = output.get("messages", [])
+                        if msgs:
+                            last = msgs[-1]
+                            final_output = getattr(last, "content", final_output)
 
-                    await save_history(redis, user_id, request.message, final_output)
-                    yield {
-                        "data": json.dumps({"type": "done", "content": final_output})
-                    }
+            await save_history(redis, user_id, request.message, final_output)
+            yield {"data": json.dumps({"type": "done", "content": final_output})}
 
         except Exception as exc:
             logger.exception("Agent error for user %s: %s", user_id, exc)

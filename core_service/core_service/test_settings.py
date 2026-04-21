@@ -8,8 +8,11 @@ DATABASES = {
     }
 }
 
-# Disable axes middleware in tests to avoid lockout complications
-MIDDLEWARE = [m for m in MIDDLEWARE if "axes" not in m]  # noqa: F405
+# Strip middleware that requires external services or is unavailable locally
+MIDDLEWARE = [
+    m for m in MIDDLEWARE  # noqa: F405
+    if "axes" not in m and "whitenoise" not in m
+]
 AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
 
 # Speed up password hashing in tests
