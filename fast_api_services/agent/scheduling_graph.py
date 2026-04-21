@@ -59,7 +59,11 @@ def _make_classify_node(llm):
             None,
         )
         if not last_human:
-            return {"task_type": "general", "proposal": None, "confirmed": False}
+            return {"task_type": "general"}
+
+        # Skip classification if already confirmed with a proposal (resume from prev turn)
+        if state.get("proposal") and state.get("confirmed"):
+            return {"task_type": state.get("task_type", "general")}
 
         classification_prompt = SystemMessage(
             content=(
@@ -75,7 +79,12 @@ def _make_classify_node(llm):
         task_type = response.content.strip().lower()
         if task_type not in ("assign_examiner", "view_calendar", "reschedule", "general"):
             task_type = "general"
-        return {"task_type": task_type, "proposal": None, "confirmed": False}
+        # Preserve proposal/confirmed from previous turn if they exist
+        return {
+            "task_type": task_type,
+            "proposal": state.get("proposal"),  # preserve if already set
+            "confirmed": state.get("confirmed", False),  # preserve if already set
+        }
 
     return classify_node
 
@@ -116,8 +125,16 @@ def _make_fetch_node(tools: list):
             fetched_text = f"Received reschedule request: {user_msg}"
 
         if fetched_text:
-            return {"messages": [AIMessage(content=f"[FETCH] {fetched_text}")]}
-        return {"task_type": task_type}
+            return {
+                "messages": [AIMessage(content=f"[FETCH] {fetched_text}")],
+                "proposal": state.get("proposal"),  # preserve from previous turn
+                "confirmed": state.get("confirmed", False),  # preserve from previous turn
+            }
+        return {
+            "task_type": task_type,
+            "proposal": state.get("proposal"),  # preserve from previous turn
+            "confirmed": state.get("confirmed", False),  # preserve from previous turn
+        }
 
     return fetch_node
 
