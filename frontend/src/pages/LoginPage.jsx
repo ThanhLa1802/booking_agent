@@ -31,7 +31,8 @@ export default function LoginPage() {
             const { access, refresh, user } = res.data
             setTokens(access, refresh)
             if (user) setUser(user)
-            navigate('/chat')
+            const dest = user?.role === 'CENTER_ADMIN' ? '/scheduling' : '/chat'
+            navigate(dest)
         } catch (err) {
             const msg =
                 err.response?.data?.detail ||

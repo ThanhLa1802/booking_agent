@@ -108,6 +108,8 @@ class BookingCancelIn(BaseModel):
 class ExaminerOut(BaseModel):
     id: int
     center_id: int
+    center_name: str = ""
+    center_city: str = ""
     name: str
     email: str
     phone: str

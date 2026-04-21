@@ -70,11 +70,13 @@ services:
     volumes:
       - chroma_data:/app/chromadb_data
       - ../docs:/app/docs:ro
+      - ../fast_api_services:/app/fast_api_services:ro
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    command: uvicorn fast_api_services.main:app --host 0.0.0.0 --port 8001 --reload
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
       interval: 15s

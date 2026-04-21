@@ -73,3 +73,49 @@ async def clear_history(redis, user_id: int) -> None:
         await redis.delete(_redis_key(user_id))
     except Exception as exc:
         logger.error("Failed to clear history for user %s: %s", user_id, exc)
+
+
+# ── pending proposal (scheduling confirmation gate) ───────────────────────────
+
+def _proposal_key(user_id: int) -> str:
+    return f"proposal:{user_id}"
+
+
+async def save_pending_proposal(
+    redis,
+    user_id: int,
+    task_type: str,
+    proposal: dict,
+    proposal_text: str,
+    ttl: int = _HISTORY_TTL,
+) -> None:
+    """Persist the pending proposal so the next turn can resume confirmation."""
+    try:
+        data = json.dumps({
+            "task_type": task_type,
+            "proposal": proposal,
+            "proposal_text": proposal_text,
+        })
+        await redis.setex(_proposal_key(user_id), ttl, data)
+    except Exception as exc:
+        logger.error("Failed to save pending proposal for user %s: %s", user_id, exc)
+
+
+async def load_pending_proposal(redis, user_id: int) -> dict | None:
+    """Load persisted proposal from previous turn. Returns None if none."""
+    try:
+        raw = await redis.get(_proposal_key(user_id))
+        if raw is None:
+            return None
+        return json.loads(raw if isinstance(raw, str) else raw.decode())
+    except Exception as exc:
+        logger.error("Failed to load pending proposal for user %s: %s", user_id, exc)
+        return None
+
+
+async def clear_pending_proposal(redis, user_id: int) -> None:
+    """Remove pending proposal after execution or cancellation."""
+    try:
+        await redis.delete(_proposal_key(user_id))
+    except Exception as exc:
+        logger.error("Failed to clear pending proposal for user %s: %s", user_id, exc)

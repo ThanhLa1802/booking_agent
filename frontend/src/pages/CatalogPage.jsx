@@ -24,10 +24,10 @@ import useExamStore from '../stores/examStore'
 import Navbar from '../components/Navbar'
 
 const STYLES = [
-    { value: '', label: 'Tất cả' },
+    { value: '', label: 'All' },
     { value: 'CLASSICAL_JAZZ', label: 'Classical & Jazz' },
     { value: 'ROCK_POP', label: 'Rock & Pop' },
-    { value: 'THEORY', label: 'Lý thuyết âm nhạc' },
+    { value: 'THEORY', label: 'Music Theory' },
 ]
 
 export default function CatalogPage() {
@@ -68,16 +68,16 @@ export default function CatalogPage() {
             <Navbar />
             <Container maxWidth="lg" sx={{ py: 4 }}>
                 <Typography variant="h5" fontWeight={700} gutterBottom>
-                    Danh mục kỳ thi
+                    Exam Catalog
                 </Typography>
 
                 {/* Filters */}
                 <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
                     <FormControl size="small" sx={{ minWidth: 200 }}>
-                        <InputLabel>Loại hình thi</InputLabel>
+                        <InputLabel>Exam Type</InputLabel>
                         <Select
                             value={styleFilter}
-                            label="Loại hình thi"
+                            label="Exam Type"
                             onChange={(e) => setStyleFilter(e.target.value)}
                         >
                             {STYLES.map((s) => (
@@ -86,13 +86,13 @@ export default function CatalogPage() {
                         </Select>
                     </FormControl>
                     <FormControl size="small" sx={{ minWidth: 120 }}>
-                        <InputLabel>Cấp độ</InputLabel>
+                        <InputLabel>Grade</InputLabel>
                         <Select
                             value={gradeFilter}
-                            label="Cấp độ"
+                            label="Grade"
                             onChange={(e) => setGradeFilter(e.target.value)}
                         >
-                            <MenuItem value="">Tất cả</MenuItem>
+                            <MenuItem value="">All</MenuItem>
                             {[1, 2, 3, 4, 5, 6, 7, 8].map((g) => (
                                 <MenuItem key={g} value={g}>Grade {g}</MenuItem>
                             ))}
@@ -104,7 +104,7 @@ export default function CatalogPage() {
                 {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
 
                 {!loading && slots.length === 0 && (
-                    <Typography color="text.secondary">Không có slot nào khả dụng.</Typography>
+                    <Typography color="text.secondary">No available slots.</Typography>
                 )}
 
                 <Grid container spacing={2}>
@@ -165,7 +165,7 @@ export default function CatalogPage() {
                                             <Chip
                                                 size="small"
                                                 color={slot.available_capacity > 5 ? 'success' : 'warning'}
-                                                label={`Còn ${slot.available_capacity} chỗ`}
+                                                label={`Remaining ${slot.available_capacity} slots`}
                                             />
                                             <Typography variant="body2" fontWeight={700} color="primary.main">
                                                 {Number(slot.fee).toLocaleString('vi-VN')}đ

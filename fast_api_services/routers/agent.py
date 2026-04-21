@@ -60,7 +60,13 @@ async def chat(
         # ── lazy imports to avoid torch/numpy crash at module load ─────────
         from fast_api_services.agent.agent import create_agent
         from fast_api_services.agent.llm import get_embeddings, get_llm
-        from fast_api_services.agent.memory import load_history, save_history
+        from fast_api_services.agent.memory import (
+            clear_pending_proposal,
+            load_history,
+            load_pending_proposal,
+            save_history,
+            save_pending_proposal,
+        )
         from fast_api_services.agent.scheduling_tools import (
             SchedulingToolContext,
             make_reschedule_tools,
@@ -87,7 +93,7 @@ async def chat(
                         "FROM accounts_userprofile up "
                         "LEFT JOIN centers_examcenter ec ON ec.id = ("
                         "  SELECT id FROM centers_examcenter "
-                        "  WHERE admin_id = up.user_id LIMIT 1"
+                        "  WHERE admin_user_id = up.user_id LIMIT 1"
                         ") "
                         "WHERE up.user_id = :uid"
                     ),
@@ -112,6 +118,18 @@ async def chat(
         booking_tools = make_tools(ctx)
         chat_history = await load_history(redis, user_id)
 
+        # ── pending proposal (scheduling confirmation gate) ────────────────
+        _CONFIRM_KW = {"xác nhận", "yes", "đồng ý", "confirm", "ok", "có"}
+        _CANCEL_KW = {"hủy", "no", "không", "cancel"}
+        msg_lower = request.message.strip().lower()
+        is_confirmation = any(kw in msg_lower for kw in _CONFIRM_KW)
+        is_cancel = any(kw in msg_lower for kw in _CANCEL_KW)
+
+        pending_proposal = await load_pending_proposal(redis, user_id)
+        if pending_proposal and is_cancel:
+            await clear_pending_proposal(redis, user_id)
+            pending_proposal = None
+
         sched_ctx = SchedulingToolContext(
             session_factory=session_factory,
             user_token=current_user.raw_token,
@@ -131,12 +149,13 @@ async def chat(
 
         from langchain_core.messages import HumanMessage
 
+        _resume = bool(pending_proposal and is_confirmation)
         initial_state = {
             "messages": [HumanMessage(content=request.message)],
             "user_role": user_role,
-            "task_type": "general",
-            "proposal": None,
-            "confirmed": False,
+            "task_type": pending_proposal["task_type"] if _resume else "general",
+            "proposal": pending_proposal["proposal"] if _resume else None,
+            "confirmed": True if _resume else False,
             "thread_id": str(user_id),
         }
 
@@ -151,42 +170,71 @@ async def chat(
                 kind = event.get("event", "")
                 name = event.get("name", "")
 
+                # Internal nodes whose LLM output must NOT reach the user
+                _INTERNAL_NODES = {"classify_node", "fetch_node"}
+
                 if kind == "on_chat_model_stream":
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        token = chunk.content
-                        final_output += token
-                        yield {
-                            "data": json.dumps({"type": "token", "content": token})
-                        }
+                    node_name = event.get("metadata", {}).get("langgraph_node", "")
+                    if node_name in _INTERNAL_NODES:
+                        pass  # skip internal classification/routing tokens
+                    else:
+                        chunk = event.get("data", {}).get("chunk")
+                        if chunk and hasattr(chunk, "content") and chunk.content:
+                            token = chunk.content
+                            final_output += token
+                            yield {
+                                "data": json.dumps({"type": "token", "content": token})
+                            }
 
                 elif kind == "on_tool_start":
-                    tool_input = event.get("data", {}).get("input", "")
-                    yield {
-                        "data": json.dumps(
-                            {
-                                "type": "tool_start",
-                                "tool": name,
-                                "input": str(tool_input)[:200],
-                            }
-                        )
-                    }
+                    node_name = event.get("metadata", {}).get("langgraph_node", "")
+                    if node_name not in _INTERNAL_NODES:
+                        tool_input = event.get("data", {}).get("input", "")
+                        yield {
+                            "data": json.dumps(
+                                {
+                                    "type": "tool_start",
+                                    "tool": name,
+                                    "input": str(tool_input)[:200],
+                                }
+                            )
+                        }
 
                 elif kind == "on_tool_end":
-                    tool_output = event.get("data", {}).get("output", "")
-                    yield {
-                        "data": json.dumps(
-                            {
-                                "type": "tool_end",
-                                "tool": name,
-                                "output": str(tool_output)[:300],
-                            }
-                        )
-                    }
+                    node_name = event.get("metadata", {}).get("langgraph_node", "")
+                    if node_name not in _INTERNAL_NODES:
+                        tool_output = event.get("data", {}).get("output", "")
+                        yield {
+                            "data": json.dumps(
+                                {
+                                    "type": "tool_end",
+                                    "tool": name,
+                                    "output": str(tool_output)[:300],
+                                }
+                            )
+                        }
 
                 elif kind == "on_chain_end":
                     output = event.get("data", {}).get("output", {})
                     if isinstance(output, dict):
+                        # Save proposal after propose_node so next turn can resume
+                        if name == "propose_node":
+                            proposal_out = output.get("proposal")
+                            if proposal_out:
+                                p_msgs = output.get("messages", [])
+                                p_text = p_msgs[-1].content if p_msgs else ""
+                                await save_pending_proposal(
+                                    redis,
+                                    user_id,
+                                    proposal_out.get("task_type", "general"),
+                                    proposal_out,
+                                    p_text,
+                                )
+                        # Clear proposal once execution is done (or cancelled)
+                        elif name in ("execute_node", "confirm_node"):
+                            if name == "execute_node" or not output.get("confirmed"):
+                                await clear_pending_proposal(redis, user_id)
+
                         msgs = output.get("messages", [])
                         if msgs:
                             last = msgs[-1]

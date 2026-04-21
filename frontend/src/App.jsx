@@ -13,6 +13,8 @@ import CatalogPage from './pages/CatalogPage'
 import ChatPage from './pages/ChatPage'
 import BookingsPage from './pages/BookingsPage'
 import ProtectedRoute from './components/ProtectedRoute'
+import AdminRoute from './components/AdminRoute'
+import SchedulingPage from './pages/SchedulingPage'
 
 const theme = createTheme({
   palette: {
@@ -50,6 +52,7 @@ function App() {
             <Route path="/catalog" element={<ProtectedRoute><CatalogPage /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
             <Route path="/bookings" element={<ProtectedRoute><BookingsPage /></ProtectedRoute>} />
+            <Route path="/scheduling" element={<AdminRoute><SchedulingPage /></AdminRoute>} />
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>

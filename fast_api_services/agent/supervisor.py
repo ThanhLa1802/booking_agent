@@ -15,7 +15,21 @@ pause at confirm_node and resume when the admin sends "xác nhận").
 """
 from __future__ import annotations
 
+from typing import Annotated, Optional
+
+from langgraph.graph.message import add_messages
+from typing_extensions import TypedDict
+
 from .state import BookingState, SchedulingState
+
+
+class SupervisorState(TypedDict):
+    messages: Annotated[list, add_messages]
+    user_role: str
+    task_type: str
+    proposal: Optional[dict]
+    confirmed: bool
+    thread_id: str
 
 
 # ── routing function ──────────────────────────────────────────────────────────
@@ -88,17 +102,6 @@ def create_supervisor_graph(
 
     # ── supervisor graph ──────────────────────────────────────────────────────
     from langgraph.graph import StateGraph as SG
-    from typing_extensions import TypedDict
-    from typing import Annotated, Optional
-    from langgraph.graph.message import add_messages
-
-    class SupervisorState(TypedDict):
-        messages: Annotated[list, add_messages]
-        user_role: str
-        task_type: str
-        proposal: Optional[dict]
-        confirmed: bool
-        thread_id: str
 
     builder = SG(SupervisorState)
     builder.add_node("booking_subgraph", booking_subgraph_node)

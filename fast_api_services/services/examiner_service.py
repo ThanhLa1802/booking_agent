@@ -28,6 +28,8 @@ def _row_to_examiner(row) -> ExaminerOut:
     return ExaminerOut(
         id=row["id"],
         center_id=row["center_id"],
+        center_name=row.get("center_name") or "",
+        center_city=row.get("center_city") or "",
         name=row["name"],
         email=row["email"],
         phone=row["phone"] or "",
@@ -56,6 +58,8 @@ async def list_examiners(
         SELECT
             e.id,
             e.center_id,
+            ec.name  AS center_name,
+            ec.city  AS center_city,
             e.name,
             e.email,
             e.phone,
@@ -63,6 +67,7 @@ async def list_examiners(
             e.is_active,
             STRING_AGG(CONCAT(i.name, ' (', i.style, ')'), ', ') AS specialization_names
         FROM centers_examiner e
+        JOIN  centers_examcenter ec ON ec.id = e.center_id
         LEFT JOIN centers_examiner_specializations es ON es.examiner_id = e.id
         LEFT JOIN catalog_instrument i ON i.id = es.instrument_id
         WHERE e.is_active = true
@@ -89,7 +94,7 @@ async def list_examiners(
         """
         params["avail_date"] = available_date
 
-    query += " GROUP BY e.id ORDER BY e.name"
+    query += " GROUP BY e.id, ec.name, ec.city ORDER BY ec.city, e.name"
     rows = (await db.execute(text(query), params)).mappings().all()
     return [_row_to_examiner(r) for r in rows]
 
@@ -177,6 +182,8 @@ async def suggest_examiners_for_slot(
         SELECT
             e.id,
             e.center_id,
+            ec.name  AS center_name,
+            ec.city  AS center_city,
             e.name,
             e.email,
             e.phone,
@@ -188,6 +195,7 @@ async def suggest_examiners_for_slot(
                 WHERE s2.examiner_id = e.id AND s2.exam_date = :exam_date
             ) AS exams_today
         FROM centers_examiner e
+        JOIN  centers_examcenter ec ON ec.id = e.center_id
         LEFT JOIN centers_examiner_specializations es  ON es.examiner_id = e.id
         LEFT JOIN catalog_instrument i2 ON i2.id = es.instrument_id
         WHERE e.center_id = :center_id
@@ -199,7 +207,7 @@ async def suggest_examiners_for_slot(
                 AND u.date_from <= :exam_date
                 AND u.date_to   >= :exam_date
           )
-        GROUP BY e.id
+        GROUP BY e.id, ec.name, ec.city
         HAVING (
             SELECT COUNT(*) FROM centers_examslot s3
             WHERE s3.examiner_id = e.id AND s3.exam_date = :exam_date
@@ -228,13 +236,13 @@ async def suggest_examiners_for_slot(
 
 async def get_exam_calendar(
     db: AsyncSession,
-    center_id: int,
+    center_id: Optional[int] = None,
     date_from: Optional[date_type] = None,
     date_to: Optional[date_type] = None,
 ) -> list[ExamSlotScheduleOut]:
     """
     Return all slots for a center (including full) with examiner info,
-    for the calendar view.
+    for the calendar view. When center_id is None, returns slots for all centers.
     """
     query = """
         SELECT
@@ -259,9 +267,12 @@ async def get_exam_calendar(
         JOIN catalog_course     c  ON c.id  = s.course_id
         JOIN catalog_instrument i  ON i.id  = c.instrument_id
         LEFT JOIN centers_examiner e ON e.id = s.examiner_id
-        WHERE s.center_id = :center_id
+        WHERE 1=1
     """
-    params: dict = {"center_id": center_id}
+    params: dict = {}
+    if center_id is not None:
+        query += " AND s.center_id = :center_id"
+        params["center_id"] = center_id
     if date_from:
         query += " AND s.exam_date >= :date_from"
         params["date_from"] = date_from

@@ -19,6 +19,22 @@ export const getMyBookings = () => apiClient.get('/api/bookings')
 
 export const getBookingDetail = (id) => apiClient.get(`/api/bookings/${id}`)
 
+// Scheduling — FastAPI (CENTER_ADMIN only)
+export const getSchedulingCalendar = (params) =>
+    apiClient.get('/api/scheduling/calendar/', { params })
+
+export const getSchedulingExaminers = (params) =>
+    apiClient.get('/api/scheduling/examiners/', { params })
+
+export const suggestExaminers = (slotId) =>
+    apiClient.get(`/api/scheduling/slots/${slotId}/suggest-examiners/`)
+
+export const assignExaminer = (slotId, examinerId) =>
+    apiClient.post(`/api/scheduling/slots/${slotId}/assign-examiner/`, {
+        examiner_id: examinerId,
+        confirm: true,
+    })
+
 // Agent — FastAPI SSE (returns raw fetch, not axios, for streaming)
 export const createChatStream = (message, sessionId, accessToken) => {
     const url = `${import.meta.env.VITE_API_URL || ''}/api/agent/chat`

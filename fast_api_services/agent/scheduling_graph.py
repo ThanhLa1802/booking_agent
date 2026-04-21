@@ -90,7 +90,7 @@ def _make_fetch_node(tools: list):
 
         if fetched_text:
             return {"messages": [AIMessage(content=f"[FETCH] {fetched_text}")]}
-        return {}
+        return {"task_type": task_type}
 
     return fetch_node
 
@@ -252,6 +252,13 @@ def _make_execute_node(tools: list):
 
 # ── routing ───────────────────────────────────────────────────────────────────
 
+def _route_from_start(state: SchedulingState) -> str:
+    """If a confirmed proposal was injected from a previous turn, skip straight to execute."""
+    if state.get("proposal") and state.get("confirmed"):
+        return "execute_node"
+    return "classify_node"
+
+
 def _route_after_propose(state: SchedulingState) -> str:
     """After propose_node: reads needing no confirm go straight to END."""
     if state.get("confirmed", False):
@@ -287,7 +294,7 @@ def create_scheduling_graph(tools: list, llm, checkpointer=None):
     builder.add_node("confirm_node", confirm_node)
     builder.add_node("execute_node", _make_execute_node(tools))
 
-    builder.add_edge(START, "classify_node")
+    builder.add_conditional_edges(START, _route_from_start, {"classify_node": "classify_node", "execute_node": "execute_node"})
     builder.add_edge("classify_node", "fetch_node")
     builder.add_edge("fetch_node", "propose_node")
     builder.add_conditional_edges("propose_node", _route_after_propose)
