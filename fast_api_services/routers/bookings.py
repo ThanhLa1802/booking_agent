@@ -15,7 +15,6 @@ from fast_api_services.schemas.models import (
     BookingCancelIn,
 )
 from fast_api_services.services.booking_service import list_user_bookings, get_booking
-from fast_api_services.services.slot_cache import hold_slot, release_slot, warm_slot
 from fast_api_services.config import get_settings
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -62,31 +61,7 @@ async def create_booking(
             ),
         )
 
-    # ── Redis slot hold (atomic) ───────────────────────────────────────────────
-    result = await hold_slot(payload.slot_id)
-    if result == 0:
-        raise HTTPException(status_code=409, detail="This exam slot is fully booked.")
-    if result == -1:
-        # Cache miss — warm from DB then retry once
-        from sqlalchemy import text
-        row = (
-            await db.execute(
-                text(
-                    "SELECT capacity, reserved_count FROM centers_examslot "
-                    "WHERE id = :id AND is_active = true"
-                ),
-                {"id": payload.slot_id},
-            )
-        ).mappings().first()
-        if not row:
-            raise HTTPException(status_code=404, detail="Slot not found")
-        available = row["capacity"] - row["reserved_count"]
-        await warm_slot(payload.slot_id, available, row["capacity"])
-        result = await hold_slot(payload.slot_id)
-        if result <= 0:
-            raise HTTPException(status_code=409, detail="This exam slot is fully booked.")
-
-    # ── Proxy write to Django ──────────────────────────────────────────────────
+    # ── Proxy write to Django (Django handles select_for_update + atomic) ──────
     try:
         async with _django_client() as client:
             resp = await client.post(
@@ -102,13 +77,11 @@ async def create_booking(
             resp.raise_for_status()
             data = resp.json()
     except HTTPStatusError as exc:
-        await release_slot(payload.slot_id)
         raise HTTPException(
             status_code=exc.response.status_code,
             detail=exc.response.json(),
         ) from exc
     except Exception as exc:
-        await release_slot(payload.slot_id)
         raise HTTPException(status_code=502, detail="Booking service unavailable") from exc
 
     booking = await get_booking(db, data["id"], current_user.user_id)

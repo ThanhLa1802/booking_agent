@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from fast_api_services.config import get_settings
 from fast_api_services.services.booking_service import get_booking, list_user_bookings
 from fast_api_services.services.catalog_service import list_available_slots, list_courses
-from fast_api_services.services.slot_cache import get_slot_availability
 
 from .rag import search_docs as _search_docs
 
@@ -113,12 +112,10 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
             return "No available slots found."
         lines = []
         for s in slots:
-            avail = await get_slot_availability(s.id)
-            remaining = avail if avail is not None else "?"
             lines.append(
                 f"[Slot {s.id}] {s.center_name}, {s.center_city} — "
                 f"{s.exam_date} {s.start_time} | {s.course_name} | "
-                f"Seats left: {remaining}"
+                f"Seats left: {s.available_capacity}"
             )
         return "\n".join(lines)
 
