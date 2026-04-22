@@ -148,6 +148,46 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
         return "\n".join(lines)
 
     @tool
+    async def search_available_slots(
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        examiner_id: Optional[int] = None,
+    ) -> str:
+        """
+        Search for available exam slots matching date and examiner criteria.
+        Args:
+            date_from: Optional earliest date (YYYY-MM-DD).
+            date_to: Optional latest date (YYYY-MM-DD).
+            examiner_id: Optional examiner ID filter.
+        Returns:
+            List of matching slots with IDs.
+        """
+        from fast_api_services.services.examiner_service import get_exam_calendar as _cal
+
+        parsed_from = date_type.fromisoformat(date_from) if date_from else None
+        parsed_to = date_type.fromisoformat(date_to) if date_to else None
+
+        async with ctx.session_factory() as db:
+            slots = await _cal(db, ctx.center_id, parsed_from, parsed_to)
+
+        # Filter by examiner_id if provided
+        if examiner_id is not None:
+            slots = [s for s in slots if s.examiner_id == examiner_id]
+
+        if not slots:
+            return f"No slots found matching your criteria."
+
+        lines = []
+        for s in slots:
+            examiner_str = s.examiner_name or "(no examiner assigned)"
+            available = s.available_capacity if hasattr(s, 'available_capacity') else "?"
+            lines.append(
+                f"[Slot {s.id}] {s.exam_date} {s.start_time} | {s.course_name} | "
+                f"Examiner: {examiner_str} | Seats: {available}"
+            )
+        return "\n".join(lines)
+
+    @tool
     async def assign_examiner_to_slot(
         slot_id: int,
         examiner_id: int,
@@ -193,6 +233,7 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
     return [
         list_examiners,
         suggest_examiners_for_slot,
+        search_available_slots,
         get_exam_calendar,
         assign_examiner_to_slot,
     ]
