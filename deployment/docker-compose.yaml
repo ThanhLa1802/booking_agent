@@ -71,12 +71,20 @@ services:
       - chroma_data:/app/chromadb_data
       - ../docs:/app/docs:ro
       - ../fast_api_services:/app/fast_api_services:ro
+    ports:
+      - "8001:8001"
+      - "9678:9678"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: uvicorn fast_api_services.main:app --host 0.0.0.0 --port 8001 --reload
+    command: >
+      sh -c 'if [ "$$DEBUG" = "true" ]; then
+               python -m debugpy --listen 0.0.0.0:9678 -m uvicorn fast_api_services.main:app --host 0.0.0.0 --port 8001;
+             else
+               uvicorn fast_api_services.main:app --host 0.0.0.0 --port 8001 --reload;
+             fi'
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
       interval: 15s
