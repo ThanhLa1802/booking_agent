@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -6,11 +8,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .routers import catalog, bookings, agent as agent_router, scheduling as scheduling_router
 
+logger = logging.getLogger(__name__)
+
+
+def _setup_langsmith(settings) -> None:
+    """Configure LangSmith tracing from settings. No-op if API key not set."""
+    key = settings.langchain_api_key
+    if not key or key in ("your-langsmith-api-key-here", ""):
+        return
+    os.environ["LANGCHAIN_TRACING_V2"] = settings.langchain_tracing_v2
+    os.environ["LANGCHAIN_API_KEY"] = key
+    os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.langchain_endpoint
+    if settings.langchain_tracing_v2 == "true":
+        logger.info(
+            "LangSmith tracing enabled — project: %s", settings.langchain_project
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: index RAG documents (skips if already indexed)
+    # Startup: configure LangSmith tracing
     settings = get_settings()
+    _setup_langsmith(settings)
+
+    # Index RAG documents (skips if already indexed)
     try:
         from .agent.llm import get_embeddings
         from .agent.rag import index_docs
@@ -18,11 +40,9 @@ async def lifespan(app: FastAPI):
         docs_dir = Path(settings.docs_dir)
         indexed = index_docs(docs_dir, embeddings, settings.chroma_persist_dir)
         if indexed:
-            import logging
-            logging.getLogger(__name__).info("RAG: indexed %d chunks.", indexed)
+            logger.info("RAG: indexed %d chunks.", indexed)
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("RAG startup indexing skipped: %s", exc)
+        logger.warning("RAG startup indexing skipped: %s", exc)
 
     yield
 

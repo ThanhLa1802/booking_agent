@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./chromadb_data"
     docs_dir: str = "../docs"
 
+    # LangSmith tracing (optional — set LANGCHAIN_API_KEY to enable)
+    langchain_tracing_v2: str = "false"   # "true" to enable
+    langchain_api_key: str = ""
+    langchain_project: str = "trinity-ai"
+    langchain_endpoint: str = "https://api.smith.langchain.com"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
