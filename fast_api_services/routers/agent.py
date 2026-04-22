@@ -98,8 +98,12 @@ async def chat(
                 result = await db.execute(query, {"uid": user_id})
                 profile = result.fetchone()
                 if profile:
-                    user_role = profile[0] or "STUDENT"  # profile.role
-                    center_id = profile[1] or 0          # profile.center_id
+                    role_val = profile[0]       # profile.role
+                    center_id = profile[1] or 0 # profile.center_id
+                    # Use explicit role if set; if admin center but no explicit role, mark CENTER_ADMIN
+                    user_role = role_val if role_val else (
+                        "CENTER_ADMIN" if center_id > 0 else "STUDENT"
+                    )
         except Exception as exc:
             logger.warning("Could not fetch user_role for %s: %s", user_id, exc)
 
