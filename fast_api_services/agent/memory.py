@@ -36,14 +36,15 @@ def _deserialize(raw: str) -> list:
             messages.append(AIMessage(content=item["content"]))
     return messages
 
-
+# load 5 latest messages for context window, and pending proposal for confirmation gate
 async def load_history(redis, user_id: int) -> list:
-    """Load conversation history from Redis. Returns empty list if none."""
+    """Load last 5 messages from conversation history in Redis."""
     try:
         raw = await redis.get(_redis_key(user_id))
         if raw is None:
             return []
-        return _deserialize(raw if isinstance(raw, str) else raw.decode())
+        messages = _deserialize(raw if isinstance(raw, str) else raw.decode())
+        return messages[-5:]  # Keep only last 5 messages for context window
     except Exception as exc:
         logger.error("Failed to load history for user %s: %s", user_id, exc)
         return []
