@@ -46,6 +46,27 @@ def _extract_date_range(text: str):
     return None, None
 
 
+def _extract_examiner_id(text: str) -> int | None:
+    """Extract examiner ID from Vietnamese text like 'giám khảo ID 2' or 'examiner 2'."""
+    patterns = [
+        r"(?:giám\s*khảo|examiner|gk)\s+(?:ID\s*)?(\d+)",
+        r"ID\s*(\d+)\s*(?:giám\s*khảo|examiner)",
+    ]
+    for pattern in patterns:
+        m = _re.search(pattern, text, _re.I)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _extract_slot_id(text: str) -> int | None:
+    """Extract slot ID from text like 'slot 70' or 'slot ID 70'."""
+    m = _re.search(r"(?:slot|khe)\s+(?:ID\s*)?(\d+)", text, _re.I)
+    if m:
+        return int(m.group(1))
+    return None
+
+
 # ── node: classify ────────────────────────────────────────────────────────────
 
 def _make_classify_node(llm):
@@ -104,22 +125,52 @@ def _make_fetch_node(tools: list):
         task_type = state.get("task_type", "general")
         fetched_text = ""
 
+        # Extract identifiers from user message
         date_from, date_to = _extract_date_range(user_msg)
-        cal_args: dict = {}
-        if date_from:
-            cal_args["date_from"] = date_from
-        if date_to:
-            cal_args["date_to"] = date_to
+        examiner_id = _extract_examiner_id(user_msg)
+        slot_id = _extract_slot_id(user_msg)
 
         if task_type == "view_calendar":
+            # Show calendar for requested date range
             tool = tool_map.get("get_exam_calendar")
             if tool:
+                cal_args: dict = {}
+                if date_from:
+                    cal_args["date_from"] = date_from
+                if date_to:
+                    cal_args["date_to"] = date_to
                 fetched_text = await tool.ainvoke(cal_args)
+
         elif task_type == "assign_examiner":
-            # Try to extract slot_id from the message
-            tool = tool_map.get("get_exam_calendar")
-            if tool:
-                fetched_text = await tool.ainvoke(cal_args)
+            # Search slots by date + examiner if both provided
+            if date_from and examiner_id is not None:
+                tool = tool_map.get("search_available_slots")
+                if tool:
+                    search_args = {"date_from": date_from}
+                    if date_to:
+                        search_args["date_to"] = date_to
+                    search_args["examiner_id"] = examiner_id
+                    fetched_text = await tool.ainvoke(search_args)
+                    if fetched_text and "No slots found" not in fetched_text:
+                        # Found slots, extract first slot ID for proposal
+                        pass
+            else:
+                # Fall back to calendar view
+                tool = tool_map.get("get_exam_calendar")
+                if tool:
+                    cal_args: dict = {}
+                    if date_from:
+                        cal_args["date_from"] = date_from
+                    if date_to:
+                        cal_args["date_to"] = date_to
+                    fetched_text = await tool.ainvoke(cal_args)
+                    
+                if examiner_id is None and date_from is None:
+                    fetched_text = (
+                        "❌ Vui lòng cung cấp: ngày tháng và ID giám khảo. "
+                        "Ví dụ: 'Đặt giám khảo ID 2 ngày 10 tháng 5 năm 2026'"
+                    )
+
         elif task_type == "reschedule":
             # For reschedule we just summarise — let propose_node do the heavy lifting
             fetched_text = f"Received reschedule request: {user_msg}"
@@ -171,10 +222,19 @@ def _make_propose_node(llm, tools: list):
             (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             None,
         )
+        user_msg = last_human.content if last_human else ""
+        
+        # Extract IDs from the full conversation
+        all_text = " ".join([m.content for m in state["messages"] if hasattr(m, "content")])
+        examiner_id = _extract_examiner_id(all_text)
+        slot_id = _extract_slot_id(all_text)
+        date_from, date_to = _extract_date_range(all_text)
+        
         system = SystemMessage(
             content=(
                 "You are a scheduling assistant. Based on the conversation and fetched data, "
                 "create a clear, concise action proposal in Vietnamese that the admin needs to confirm.\n"
+                "If you see fetched data (starting with [FETCH]), use it to fill in specific slot or examiner details.\n"
                 "Format:\n"
                 "🗓️ **Đề xuất hành động:**\n"
                 "<detail>\n\n"
@@ -191,6 +251,10 @@ def _make_propose_node(llm, tools: list):
             "conversation_messages": [
                 m.content for m in state["messages"] if hasattr(m, "content")
             ],
+            "examiner_id": examiner_id,  # extracted from conversation
+            "slot_id": slot_id,
+            "date_from": date_from,
+            "date_to": date_to,
         }
         return {
             "messages": [AIMessage(content=proposal_text)],
@@ -253,36 +317,53 @@ def _make_execute_node(tools: list):
         proposal = state.get("proposal") or {}
         task_type = proposal.get("task_type", state.get("task_type", "general"))
 
-        # Extract IDs from stored proposal conversation (preserves IDs from turn 1 when confirming on turn 2)
-        proposal_messages = proposal.get("conversation_messages", [])
-        messages_text = " ".join(proposal_messages) if proposal_messages else ""
-
         result = "❌ Could not determine the action to execute."
 
         if task_type == "assign_examiner":
             tool = tool_map.get("assign_examiner_to_slot")
             if tool:
-                # Extract slot_id and examiner_id from messages (best-effort)
-                import re
-                slot_match = re.search(r"slot\s*[#:]?\s*(\d+)", messages_text, re.I)
-                exam_match = re.search(r"examiner\s*[#:]?\s*(\d+)", messages_text, re.I)
-                if slot_match and exam_match:
+                # Use extracted IDs from proposal or try to extract from conversation
+                slot_id = proposal.get("slot_id")
+                examiner_id = proposal.get("examiner_id")
+                
+                # Fallback: extract from conversation messages if not in proposal
+                if not slot_id or not examiner_id:
+                    proposal_messages = proposal.get("conversation_messages", [])
+                    messages_text = " ".join(proposal_messages) if proposal_messages else ""
+                    
+                    if not slot_id:
+                        m = _re.search(r"slot\s*[#:]?\s*(\d+)", messages_text, _re.I)
+                        if m:
+                            slot_id = int(m.group(1))
+                    
+                    if not examiner_id:
+                        m = _re.search(r"(?:giám\s*khảo|examiner)\s*[#:]?\s*(\d+)", messages_text, _re.I)
+                        if m:
+                            examiner_id = int(m.group(1))
+                
+                if slot_id and examiner_id:
                     result = await tool.ainvoke(
                         {
-                            "slot_id": int(slot_match.group(1)),
-                            "examiner_id": int(exam_match.group(1)),
+                            "slot_id": slot_id,
+                            "examiner_id": examiner_id,
                             "confirm": True,
                         }
                     )
                 else:
-                    result = "❌ Không tìm thấy Slot ID hoặc Examiner ID trong cuộc hội thoại."
+                    result = (
+                        f"❌ Không tìm thấy Slot ID hoặc Examiner ID. "
+                        f"Có slot_id={slot_id}, examiner_id={examiner_id}."
+                    )
 
         elif task_type == "reschedule":
             tool = tool_map.get("reschedule_booking")
             if tool:
-                import re
-                booking_match = re.search(r"booking\s*[#:]?\s*(\d+)", messages_text, re.I)
-                slot_match = re.search(r"slot\s*[#:]?\s*(\d+)", messages_text, re.I)
+                # Extract from proposal or conversation
+                proposal_messages = proposal.get("conversation_messages", [])
+                messages_text = " ".join(proposal_messages) if proposal_messages else ""
+                
+                booking_match = _re.search(r"booking\s*[#:]?\s*(\d+)", messages_text, _re.I)
+                slot_match = _re.search(r"slot\s*[#:]?\s*(\d+)", messages_text, _re.I)
                 if booking_match and slot_match:
                     result = await tool.ainvoke(
                         {
