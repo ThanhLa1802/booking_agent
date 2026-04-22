@@ -51,16 +51,34 @@ def create_supervisor_graph(
     checkpointer=None,
 ):
     """
-    Build and compile the SupervisorGraph.
+    Build and compile the SupervisorGraph — top-level router for multi-agent flows.
+
+    Routes user requests to appropriate sub-graph based on user_role:
+      - CENTER_ADMIN → SchedulingGraph (examiner assignment, calendar management)
+      - STUDENT / PARENT → BookingGraph (exam booking, cancellation, rescheduling)
 
     Args:
-        booking_tools: Tools for the BookingGraph (student/parent agent).
-        scheduling_tools: Tools for the SchedulingGraph (admin agent).
-        llm: LLM instance (from get_llm()).
-        chat_history: Conversation history loaded from Redis.
-        checkpointer: Optional LangGraph checkpointer for state persistence.
+        booking_tools: LangChain tools for BookingGraph (student/parent agent).
+                      Tools: search_exam_docs, list_courses, create_booking, cancel_booking, etc.
+        scheduling_tools: LangChain tools for SchedulingGraph (admin agent).
+                         Tools: list_examiners, assign_examiner, view calendar, etc.
+        llm: LLM instance from get_llm(). Supports Ollama, Google Gemini, or OpenAI.
+        chat_history: Pre-loaded conversation history (from Redis) for context.
+        checkpointer: Optional LangGraph Redis checkpointer for state persistence
+                     (required only for admin confirmation gate; None for students).
+
     Returns:
-        Compiled CompiledGraph ready for ainvoke / astream_events.
+        Compiled LangGraph CompiledGraph ready for ainvoke() or astream_events().
+
+    State flow:
+        START → _route_by_role() 
+                  ├─ (CENTER_ADMIN) → scheduling_subgraph → END
+                  └─ (STUDENT/PARENT) → booking_subgraph → END
+
+    Note:
+        Sub-graphs are compiled separately and invoked as async nodes. State from
+        the routing decision (user_role, thread_id) is preserved through sub-graph
+        invocation.
     """
     from langgraph.graph import END, START, StateGraph
 
@@ -73,15 +91,26 @@ def create_supervisor_graph(
 
     # ── supervisor state: superset of both sub-graph states ──────────────────
     # We use a plain dict-based state to be role-agnostic at the router level.
-    # sub-graphs are compiled separately and called as nodes.
+    # Each sub-graph is compiled separately and called as an async node, allowing
+    # each to manage its own state schema independently.
 
     async def booking_subgraph_node(state: dict) -> dict:
+        """
+        Invoke BookingGraph for STUDENT/PARENT users.
+        Maps: state['messages'] + state['user_role'] → BookingState
+        Preserves: user_role through state propagation (required for multi-turn).
+        """
         result = await booking_graph.ainvoke(
             BookingState(messages=state["messages"], user_role=state["user_role"])
         )
-        return {"messages": result["messages"]}
+        return {"messages": result["messages"], "user_role": state["user_role"]}
 
     async def scheduling_subgraph_node(state: dict) -> dict:
+        """
+        Invoke SchedulingGraph for CENTER_ADMIN users.
+        Maps: state → SchedulingState (preserves task_type, proposal, confirmed).
+        Thread ID enables human-in-the-loop confirmation via Redis checkpointer.
+        """
         sched_state = SchedulingState(
             messages=state["messages"],
             user_role=state["user_role"],

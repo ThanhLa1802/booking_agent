@@ -270,7 +270,7 @@ async def get_exam_calendar(
         WHERE 1=1
     """
     params: dict = {}
-    if center_id is not None:
+    if center_id:  # 0 or None → no filter (show all centers)
         query += " AND s.center_id = :center_id"
         params["center_id"] = center_id
     if date_from:

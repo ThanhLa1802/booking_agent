@@ -86,23 +86,20 @@ async def chat(
         center_id = 0
         try:
             async with session_factory() as db:
-                from sqlalchemy import text
-                row = await db.execute(
-                    text(
-                        "SELECT up.role, ec.id AS center_id "
-                        "FROM accounts_userprofile up "
-                        "LEFT JOIN centers_examcenter ec ON ec.id = ("
-                        "  SELECT id FROM centers_examcenter "
-                        "  WHERE admin_user_id = up.user_id LIMIT 1"
-                        ") "
-                        "WHERE up.user_id = :uid"
-                    ),
-                    {"uid": user_id},
-                )
-                profile = row.fetchone()
+                from sqlalchemy import select, text
+                # Query user profile to get role and find associated center
+                query = text("""
+                    SELECT up.role, ec.id AS center_id
+                    FROM accounts_userprofile up
+                    LEFT JOIN centers_examcenter ec 
+                        ON ec.admin_user_id = up.user_id
+                    WHERE up.user_id = :uid
+                """)
+                result = await db.execute(query, {"uid": user_id})
+                profile = result.fetchone()
                 if profile:
-                    user_role = profile.role or "STUDENT"
-                    center_id = profile.center_id or 0
+                    user_role = profile[0] or "STUDENT"  # profile.role
+                    center_id = profile[1] or 0          # profile.center_id
         except Exception as exc:
             logger.warning("Could not fetch user_role for %s: %s", user_id, exc)
 
@@ -217,10 +214,16 @@ async def chat(
                 elif kind == "on_chain_end":
                     output = event.get("data", {}).get("output", {})
                     if isinstance(output, dict):
-                        # Save proposal after propose_node so next turn can resume
-                        if name == "propose_node":
+                        # Save/clear proposal based on scheduling_subgraph output.
+                        # We check the subgraph node (registered in SupervisorGraph)
+                        # rather than the inner propose_node, because ainvoke() on a
+                        # nested compiled graph does not always surface inner node
+                        # names reliably in astream_events.
+                        if name == "scheduling_subgraph":
                             proposal_out = output.get("proposal")
-                            if proposal_out:
+                            confirmed_out = output.get("confirmed", False)
+                            if proposal_out and not confirmed_out:
+                                # Proposal made, waiting for user confirmation
                                 p_msgs = output.get("messages", [])
                                 p_text = p_msgs[-1].content if p_msgs else ""
                                 await save_pending_proposal(
@@ -230,9 +233,8 @@ async def chat(
                                     proposal_out,
                                     p_text,
                                 )
-                        # Clear proposal once execution is done (or cancelled)
-                        elif name in ("execute_node", "confirm_node"):
-                            if name == "execute_node" or not output.get("confirmed"):
+                            else:
+                                # Executed, cancelled, or read-only — clear any pending proposal
                                 await clear_pending_proposal(redis, user_id)
 
                         msgs = output.get("messages", [])

@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from langchain_core.embeddings import Embeddings
 
 logger = logging.getLogger(__name__)
 
