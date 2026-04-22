@@ -71,6 +71,8 @@ export default function ChatPage() {
             abortRef.current = reader
             let buffer = ''
             let hasPendingConfirm = false
+            let tokenReceived = false
+            let doneContent = ''
 
             while (true) {
                 const { done, value } = await reader.read()
@@ -89,6 +91,7 @@ export default function ChatPage() {
                         const event = JSON.parse(raw)
                         if (event.type === 'token') {
                             appendToken(event.content)
+                            tokenReceived = true
                             if (event.content.includes('Confirmation required') || event.content.includes('⚠️')) {
                                 hasPendingConfirm = true
                             }
@@ -97,6 +100,7 @@ export default function ChatPage() {
                         } else if (event.type === 'tool_end') {
                             removeToolCall(event.tool)
                         } else if (event.type === 'done') {
+                            doneContent = event.content || ''
                             break
                         } else if (event.type === 'error') {
                             setError(event.content)
@@ -106,6 +110,12 @@ export default function ChatPage() {
                         // ignore parse errors
                     }
                 }
+            }
+
+            // If no tokens were streamed (e.g. confirmation/execute path uses ainvoke),
+            // use the done event's content directly as the message.
+            if (!tokenReceived && doneContent) {
+                appendToken(doneContent)
             }
 
             finishStreaming(hasPendingConfirm)

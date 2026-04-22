@@ -163,6 +163,22 @@ async def chat(
         final_output = ""
 
         try:
+            # ── Confirmation turn: execute_node doesn't call LLM, so no stream tokens.
+            # Use ainvoke directly to get a reliable result instead of astream_events.
+            if _resume:
+                result = await supervisor.ainvoke(
+                    initial_state,
+                    config={"configurable": {"thread_id": str(user_id)}},
+                )
+                msgs = result.get("messages", [])
+                if msgs:
+                    final_output = getattr(msgs[-1], "content", "")
+                # Clear the pending proposal after execution
+                await clear_pending_proposal(redis, user_id)
+                await save_history(redis, user_id, request.message, final_output)
+                yield {"data": json.dumps({"type": "done", "content": final_output})}
+                return
+
             async for event in supervisor.astream_events(
                 initial_state,
                 version="v2",
