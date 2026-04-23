@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import AsyncGenerator, Optional
+from wsgiref.validate import validator
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -37,6 +39,14 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     session_id: Optional[str] = None  # reserved for future multi-session support
 
+    #validate message content for safety (basic example, can be expanded with more robust checks)
+    @validator("message")
+    def validate_message(cls, v):
+        dangerous = [r"ignore.*instruction", r"system.*override", r"bypass.*confirmation"]
+        for pattern in dangerous:
+            if re.search(pattern, v, re.IGNORECASE):
+                raise ValueError("Invalid message")
+        return v
 
 class ChatResponse(BaseModel):
     type: str
