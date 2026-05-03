@@ -30,6 +30,7 @@ class SupervisorState(TypedDict):
     proposal: Optional[dict]
     confirmed: bool
     thread_id: str
+    assignment_task_id: Optional[str]
 
 
 # ── routing function ──────────────────────────────────────────────────────────
@@ -117,6 +118,7 @@ def create_supervisor_graph(
             task_type=state.get("task_type", "general"),
             proposal=state.get("proposal"),
             confirmed=state.get("confirmed", False),
+            assignment_task_id=state.get("assignment_task_id"),
         )
         result = await scheduling_graph.ainvoke(
             sched_state,
@@ -127,6 +129,7 @@ def create_supervisor_graph(
             "task_type": result.get("task_type", "general"),
             "proposal": result.get("proposal"),
             "confirmed": result.get("confirmed", False),
+            "assignment_task_id": result.get("assignment_task_id"),
         }
 
     # ── supervisor graph ──────────────────────────────────────────────────────

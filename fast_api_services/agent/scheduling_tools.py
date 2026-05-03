@@ -14,6 +14,7 @@ inline guard as defence-in-depth.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date as date_type
@@ -25,6 +26,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from fast_api_services.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _get_redis_in_tool():
+    """Thin wrapper so tests can patch fast_api_services.agent.scheduling_tools._get_redis_in_tool."""
+    from fast_api_services.services.slot_cache import get_redis
+    return get_redis()
+
 
 _CONFIRM_REQUIRED = (
     "⚠️ Confirmation required. Please explicitly confirm (yes / xác nhận) "
@@ -230,12 +238,140 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
             logger.error("assign_examiner_to_slot error: %s", exc)
             return f"❌ Error assigning examiner: {exc}"
 
+    @tool
+    async def auto_plan_schedule(
+        date_from: str,
+        date_to: str,
+    ) -> str:
+        """
+        Generate a batch exam schedule plan for a date range using OR-Tools.
+        Fires a background task, waits for the plan (up to 15 s), and returns
+        a formatted preview table for the admin to review and confirm.
+        Args:
+            date_from: Start date (YYYY-MM-DD).
+            date_to:   End date (YYYY-MM-DD).
+        Returns:
+            Formatted plan preview with [TASK_ID:...] prefix.
+        """
+        import json as _json
+
+        from fast_api_services.agent.scheduling_tools import _get_redis_in_tool
+
+        settings = get_settings()
+
+        # 1. Fire the Celery task via Django
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    f"{settings.django_service_url}/api/centers/schedule/batch/",
+                    json={"date_from": date_from, "date_to": date_to},
+                    headers={"Authorization": f"Bearer {ctx.user_token}"},
+                )
+            if resp.status_code != 202:
+                return (
+                    f"❌ Không thể bắt đầu lập lịch "
+                    f"(HTTP {resp.status_code}): {resp.text[:200]}"
+                )
+            task_id = resp.json().get("task_id")
+            if not task_id:
+                return "❌ Server không trả về task_id."
+        except Exception as exc:
+            return f"❌ Lỗi khi gọi server: {exc}"
+
+        # 2. Poll Redis until plan ready (max 15 s)
+        rc = _get_redis_in_tool()
+        redis_key = f"schedule_task:{task_id}"
+        plan_data = None
+        for _ in range(15):
+            await asyncio.sleep(1)
+            raw = await rc.get(redis_key)
+            if raw:
+                parsed = _json.loads(raw)
+                if parsed.get("status") != "PENDING":
+                    plan_data = parsed
+                    break
+
+        if plan_data is None:
+            return (
+                f"[TASK_ID:{task_id}]\n"
+                "⏳ Hệ thống đang tính toán lịch. "
+                "Gõ 'kiểm tra lịch' sau ít phút để xem kết quả."
+            )
+
+        if plan_data.get("status") == "FAILURE":
+            return (
+                f"[TASK_ID:{task_id}]\n"
+                f"❌ Lỗi khi lập lịch: {plan_data.get('error', 'Unknown error')}"
+            )
+
+        # 3. Format preview
+        plan = plan_data.get("plan", [])
+        unassigned = plan_data.get("unassigned", [])
+
+        lines = [f"[TASK_ID:{task_id}]"]
+        lines.append(f"📋 **Kế hoạch xếp lịch {date_from} → {date_to}**")
+        lines.append(
+            f"✅ Xếp được: **{len(plan)} slot** | "
+            f"⚠️ Chưa xếp: **{len(unassigned)} slot**\n"
+        )
+
+        if plan:
+            lines.append("| Ngày | Giờ | Môn thi | Giám khảo |")
+            lines.append("|------|-----|---------|-----------|")
+            for item in plan:
+                lines.append(
+                    f"| {item['exam_date']} | {item['start_time']} "
+                    f"| {item['course_name']} | {item['examiner_name']} |"
+                )
+
+        if unassigned:
+            lines.append("\n⚠️ **Slot chưa xếp được giám khảo:**")
+            lines.append("| Ngày | Giờ | Môn thi | Lý do |")
+            lines.append("|------|-----|---------|-------|")
+            for item in unassigned:
+                lines.append(
+                    f"| {item['exam_date']} | {item['start_time']} "
+                    f"| {item['course_name']} | {item.get('reason', '—')} |"
+                )
+
+        return "\n".join(lines)
+
+    @tool
+    async def confirm_schedule_plan(task_id: str) -> str:
+        """
+        Commit a previously reviewed schedule plan to the database.
+        Only call this after the admin has explicitly confirmed the plan.
+        Args:
+            task_id: The task_id returned by auto_plan_schedule.
+        Returns:
+            Success message or error details.
+        """
+        settings = get_settings()
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    f"{settings.django_service_url}/api/centers/schedule/batch/{task_id}/confirm/",
+                    headers={"Authorization": f"Bearer {ctx.user_token}"},
+                )
+            if resp.status_code == 200:
+                data = resp.json()
+                return (
+                    f"✅ Đã lưu lịch thành công: "
+                    f"**{data.get('assigned_count', 0)} giám khảo** được gán."
+                )
+            return f"❌ Lỗi lưu lịch (HTTP {resp.status_code}): {resp.text[:200]}"
+        except Exception as exc:
+            logger.error("confirm_schedule_plan error: %s", exc)
+            return f"❌ Lỗi: {exc}"
+
     return [
         list_examiners,
         suggest_examiners_for_slot,
         search_available_slots,
         get_exam_calendar,
         assign_examiner_to_slot,
+        auto_plan_schedule,
+        confirm_schedule_plan,
     ]
 
 

@@ -267,3 +267,124 @@ async def test_suggest_slots_empty(sched_ctx):
         result = await suggest_tool.ainvoke({"booking_id": 5})
 
     assert "No alternative" in result
+
+
+# ── 9. auto_plan_schedule ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_auto_plan_schedule_returns_plan(sched_ctx):
+    """Fires task, polls Redis, returns formatted preview with [TASK_ID:...]."""
+    import json as _json
+
+    tools = make_scheduling_tools(sched_ctx)
+    plan_tool = next(t for t in tools if t.name == "auto_plan_schedule")
+
+    task_id = "abc-123"
+    plan_payload = {
+        "status": "SUCCESS",
+        "plan": [
+            {
+                "slot_id": 1,
+                "examiner_id": 2,
+                "examiner_name": "Nguyen Van A",
+                "exam_date": "2026-06-01",
+                "start_time": "09:00",
+                "course_name": "Piano Grade 3",
+            }
+        ],
+        "unassigned": [],
+    }
+
+    mock_dispatch_resp = MagicMock()
+    mock_dispatch_resp.status_code = 202
+    mock_dispatch_resp.json.return_value = {"task_id": task_id}
+
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=_json.dumps(plan_payload).encode())
+
+    with patch("httpx.AsyncClient") as mock_client_cls, \
+         patch("fast_api_services.agent.scheduling_tools.asyncio.sleep", AsyncMock()), \
+         patch(
+             "fast_api_services.agent.scheduling_tools._get_redis_in_tool",
+             return_value=mock_redis,
+         ):
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_dispatch_resp)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await plan_tool.ainvoke(
+            {"date_from": "2026-06-01", "date_to": "2026-06-30"}
+        )
+
+    assert f"[TASK_ID:{task_id}]" in result
+    assert "Nguyen Van A" in result
+    assert "Piano Grade 3" in result
+
+
+@pytest.mark.asyncio
+async def test_auto_plan_schedule_django_error(sched_ctx):
+    """Returns error string when Django returns non-202."""
+    tools = make_scheduling_tools(sched_ctx)
+    plan_tool = next(t for t in tools if t.name == "auto_plan_schedule")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 400
+    mock_resp.text = "Invalid date range"
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await plan_tool.ainvoke(
+            {"date_from": "2026-06-01", "date_to": "2026-06-30"}
+        )
+
+    assert "❌" in result
+    assert "400" in result
+
+
+# ── 10. confirm_schedule_plan ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_confirm_schedule_plan_success(sched_ctx):
+    tools = make_scheduling_tools(sched_ctx)
+    confirm_tool = next(t for t in tools if t.name == "confirm_schedule_plan")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"assigned_count": 12}
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await confirm_tool.ainvoke({"task_id": "abc-123"})
+
+    assert "✅" in result
+    assert "12" in result
+
+
+@pytest.mark.asyncio
+async def test_confirm_schedule_plan_failure(sched_ctx):
+    tools = make_scheduling_tools(sched_ctx)
+    confirm_tool = next(t for t in tools if t.name == "confirm_schedule_plan")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    mock_resp.text = "Task not found"
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await confirm_tool.ainvoke({"task_id": "abc-123"})
+
+    assert "❌" in result
+    assert "404" in result

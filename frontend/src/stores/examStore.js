@@ -30,6 +30,10 @@ const useExamStore = create((set) => ({
             selectedStyle: null,
             selectedSlot: null,
         }),
+
+    // ── batch schedule task tracking ────────────────────────────────────────
+    scheduleTaskId: null,
+    setScheduleTaskId: (id) => set({ scheduleTaskId: id }),
 }))
 
 export default useExamStore

@@ -5,10 +5,15 @@ Graph topology:
     START → classify_node → fetch_node → propose_node
                                               │
                               ┌───────────────┴───────────────┐
-                         (view_calendar             (assign / reschedule)
+                         (view_calendar      (assign / reschedule / batch_assign)
                           or general)                    ↓
                               │                    confirm_node ──(yes)──→ execute_node → END
-                              └────────────────────────(no)──→ END (agent asks user)
+                              └────────────────────────(no)─→ END (agent asks user)
+
+batch_assign flow:
+    fetch_node calls auto_plan_schedule (fires Celery + polls Redis)
+    propose_node shows plan preview table → admin confirms
+    execute_node calls confirm_schedule_plan (writes to DB)
 """
 from __future__ import annotations
 
@@ -89,16 +94,17 @@ def _make_classify_node(llm):
         classification_prompt = SystemMessage(
             content=(
                 "Classify the following CENTER_ADMIN message into exactly one of these task types:\n"
-                "  assign_examiner  — assigning or changing which examiner covers a slot\n"
+                "  assign_examiner  — assigning or changing which examiner covers a single slot\n"
                 "  view_calendar    — viewing the exam schedule or calendar\n"
-                "  reschedule       — rescheduling a student's booking to a new slot\n"
+                "  reschedule       — rescheduling a student\'s booking to a new slot\n"
+                "  batch_assign     — auto-schedule / assign examiners for a full week or month\n"
                 "  general          — anything else (questions, greetings, etc.)\n\n"
                 "Respond with ONLY the task_type string, nothing else."
             )
         )
         response = await llm.ainvoke([classification_prompt, last_human])
         task_type = response.content.strip().lower()
-        if task_type not in ("assign_examiner", "view_calendar", "reschedule", "general"):
+        if task_type not in ("assign_examiner", "view_calendar", "reschedule", "batch_assign", "general"):
             task_type = "general"
         # Preserve proposal/confirmed from previous turn if they exist
         return {
@@ -175,6 +181,35 @@ def _make_fetch_node(tools: list):
             # For reschedule we just summarise — let propose_node do the heavy lifting
             fetched_text = f"Received reschedule request: {user_msg}"
 
+        elif task_type == "batch_assign":
+            tool = tool_map.get("auto_plan_schedule")
+            if tool:
+                plan_args: dict = {}
+                if date_from:
+                    plan_args["date_from"] = date_from
+                if date_to:
+                    plan_args["date_to"] = date_to
+                if not plan_args.get("date_from"):
+                    fetched_text = (
+                        "❌ Vui lòng cho biết khoảng thời gian. "
+                        "Ví dụ: 'Xếp lịch giám khảo tháng 6 năm 2026'"
+                    )
+                else:
+                    fetched_text = await tool.ainvoke(plan_args)
+            else:
+                fetched_text = "❌ Tool auto_plan_schedule not available."
+
+            # Extract task_id from the [TASK_ID:...] prefix
+            task_id_match = _re.search(r"\[TASK_ID:([^\]]+)\]", fetched_text)
+            assignment_task_id = task_id_match.group(1) if task_id_match else None
+
+            return {
+                "messages": [AIMessage(content=f"[FETCH] {fetched_text}")],
+                "proposal": state.get("proposal"),
+                "confirmed": state.get("confirmed", False),
+                "assignment_task_id": assignment_task_id,
+            }
+
         if fetched_text:
             return {
                 "messages": [AIMessage(content=f"[FETCH] {fetched_text}")],
@@ -199,22 +234,33 @@ def _make_propose_node(llm, tools: list):
     async def propose_node(state: SchedulingState) -> dict:
         task_type = state.get("task_type", "general")
 
-        # For view_calendar and general, no confirmation needed — just reply directly
+        # For view_calendar: present fetched data verbatim; use LLM only for fallback/general
         if task_type in ("view_calendar", "general"):
+            # Extract [FETCH] content directly — avoid LLM reformatting real data
+            fetch_messages = [
+                m for m in state["messages"]
+                if hasattr(m, "content") and str(m.content).startswith("[FETCH]")
+            ]
+            if fetch_messages:
+                plan_text = fetch_messages[-1].content.removeprefix("[FETCH] ").strip()
+                return {
+                    "messages": [AIMessage(content=plan_text)],
+                    "proposal": None,
+                    "confirmed": True,
+                }
+            # No real data — ask LLM for a graceful fallback message only
             system = SystemMessage(
                 content=(
-                    "Bạn là trợ lý xếp lịch thi cho quản trị viên trung tâm. "
-                    "Dựa vào dữ liệu đã lấy từ hệ thống (dòng bắt đầu bằng [FETCH]), "
-                    "hãy trả lời bằng tiếng Việt một cách rõ ràng và đầy đủ. "
-                    "Nếu không có dữ liệu [FETCH], hãy thông báo không tìm thấy slot nào "
-                    "trong khoảng thời gian yêu cầu."
+                    "Bạn là trợ lý xếp lịch thi cho quản trị viên trung tâm âm nhạc Trinity. "
+                    "Không tìm thấy dữ liệu từ hệ thống. "
+                    "Hãy thông báo ngắn gọn bằng tiếng Việt rằng không có dữ liệu trong khoảng thời gian yêu cầu."
                 )
             )
             response = await llm.ainvoke([system] + state["messages"])
             return {
                 "messages": [AIMessage(content=response.content)],
                 "proposal": None,
-                "confirmed": True,   # no confirmation needed for reads
+                "confirmed": True,
             }
 
         # For write operations, build a structured proposal
@@ -223,13 +269,59 @@ def _make_propose_node(llm, tools: list):
             None,
         )
         user_msg = last_human.content if last_human else ""
-        
+
+        # batch_assign: plan preview is already in [FETCH] — present it verbatim.
+        # NEVER re-process through LLM: it will hallucinate fake subjects/dates.
+        if task_type == "batch_assign":
+            task_id = state.get("assignment_task_id")
+
+            # Extract the [FETCH] message content (already formatted by auto_plan_schedule)
+            fetch_messages = [
+                m for m in state["messages"]
+                if hasattr(m, "content") and str(m.content).startswith("[FETCH]")
+            ]
+            fetch_text = fetch_messages[-1].content if fetch_messages else ""
+            # Strip the [FETCH] prefix — the rest is the formatted plan or error
+            plan_text = fetch_text.removeprefix("[FETCH] ").strip()
+
+            has_error = "❌" in plan_text or not task_id
+
+            if has_error:
+                # Present the error directly — no LLM, no confirmation prompt
+                error_display = plan_text if plan_text else "❌ Không thể bắt đầu lập lịch. Vui lòng thử lại."
+                return {
+                    "messages": [AIMessage(content=error_display)],
+                    "proposal": None,
+                    "confirmed": True,  # no confirmation needed for errors
+                }
+
+            # ⏳ case: task dispatched but OR-Tools not done within 15s poll
+            if "⏳" in plan_text:
+                return {
+                    "messages": [AIMessage(content=plan_text)],
+                    "proposal": None,
+                    "confirmed": True,  # no confirmation — task still computing
+                }
+
+            # Success: append confirmation prompt directly to the tool's output
+            display = plan_text + "\n\nGõ **xác nhận** để lưu lịch vào hệ thống, hoặc **hủy** để bỏ qua."
+            proposal = {
+                "task_type": "batch_assign",
+                "description": display,
+                "task_id": task_id,
+            }
+            return {
+                "messages": [AIMessage(content=display)],
+                "proposal": proposal,
+                "confirmed": False,
+            }
+
         # Extract IDs from the full conversation
         all_text = " ".join([m.content for m in state["messages"] if hasattr(m, "content")])
         examiner_id = _extract_examiner_id(all_text)
         slot_id = _extract_slot_id(all_text)
         date_from, date_to = _extract_date_range(all_text)
-        
+
         system = SystemMessage(
             content=(
                 "You are a scheduling assistant. Based on the conversation and fetched data, "
@@ -361,7 +453,7 @@ def _make_execute_node(tools: list):
                 # Extract from proposal or conversation
                 proposal_messages = proposal.get("conversation_messages", [])
                 messages_text = " ".join(proposal_messages) if proposal_messages else ""
-                
+
                 booking_match = _re.search(r"booking\s*[#:]?\s*(\d+)", messages_text, _re.I)
                 slot_match = _re.search(r"slot\s*[#:]?\s*(\d+)", messages_text, _re.I)
                 if booking_match and slot_match:
@@ -375,10 +467,21 @@ def _make_execute_node(tools: list):
                 else:
                     result = "❌ Không tìm thấy Booking ID hoặc Slot ID."
 
+        elif task_type == "batch_assign":
+            tool = tool_map.get("confirm_schedule_plan")
+            task_id = proposal.get("task_id")
+            if tool and task_id:
+                result = await tool.ainvoke({"task_id": task_id})
+            elif not task_id:
+                result = "❌ Không tìm thấy task_id trong proposal."
+            else:
+                result = "❌ Tool confirm_schedule_plan không khả dụng."
+
         return {
             "messages": [AIMessage(content=result)],
             "proposal": None,
             "confirmed": False,
+            "assignment_task_id": None,
         }
 
     return execute_node
@@ -394,10 +497,17 @@ def _route_from_start(state: SchedulingState) -> str:
 
 
 def _route_after_propose(state: SchedulingState) -> str:
-    """After propose_node: reads needing no confirm go straight to END."""
-    if state.get("confirmed", False):
-        return "__end__"
-    return "confirm_node"
+    """Always end the turn after propose_node.
+
+    - Read ops (view_calendar, general): propose_node already sets confirmed=True.
+    - Write ops: end the turn so the admin can review the proposal.
+      The NEXT turn is handled by the agent router's _resume mechanism,
+      which injects the stored proposal and routes directly to execute_node.
+
+    confirm_node is intentionally bypassed in single-turn flows to prevent it
+    from overwriting the proposal display with a generic "please confirm" message.
+    """
+    return "__end__"
 
 
 def _route_after_confirm(state: SchedulingState) -> str:

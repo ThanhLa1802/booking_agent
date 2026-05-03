@@ -15,6 +15,7 @@ import BookingsPage from './pages/BookingsPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
 import SchedulingPage from './pages/SchedulingPage'
+import ScheduleTaskPoller from './components/ScheduleTaskPoller'
 
 const theme = createTheme({
   palette: {
@@ -46,6 +47,7 @@ function App() {
       <CssBaseline />
       <BrowserRouter>
         <TokenRefreshGate>
+          <ScheduleTaskPoller />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />

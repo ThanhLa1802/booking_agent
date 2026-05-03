@@ -16,7 +16,7 @@ Học sinh (hoặc phụ huynh) trò chuyện bằng tiếng Việt với trợ 
 | `PARENT` | Phụ huynh đăng ký thay con |
 | `CENTER_ADMIN` | Quản trị viên trung tâm thi |
 
-### Luồng đặt lịch thi
+### Luồng đặt lịch thi (STUDENT / PARENT)
 
 ```
 1. Đăng nhập  →  2. Tìm kiếm slot  →  3. Trợ lý tư vấn  →  4. Xác nhận đặt lịch
@@ -26,6 +26,28 @@ Học sinh (hoặc phụ huynh) trò chuyện bằng tiếng Việt với trợ 
                                                Django tạo Booking trong DB
                                                                         ↓
                                               Celery gửi email xác nhận + nhắc thi
+```
+
+### Luồng xếp lịch hàng loạt (CENTER_ADMIN)
+
+```
+Admin gõ "xếp lịch thi tháng 5"  →  FastAPI nhận yêu cầu
+                                           ↓
+                           Agent phát hiện ý định batch scheduling
+                                           ↓
+               ⏳ Phản hồi ngay: "Đang xếp lịch, vui lòng đợi..."
+                                           ↓
+            Django POST /api/centers/schedule/batch/ → Celery task
+                                           ↓
+              OR-Tools CP-SAT solver (tối ưu phân công giám khảo)
+                                           ↓
+            Kết quả lưu Redis schedule_task:{task_id} (TTL 2h)
+                                           ↓
+               FastAPI poll Redis 15 lần × 1s → đọc kế hoạch
+                                           ↓
+            Hiển thị bảng kế hoạch cho admin + yêu cầu xác nhận
+                                           ↓
+              Admin gõ "xác nhận"  →  Django ghi vào DB hàng loạt
 ```
 
 ### Chương trình thi hỗ trợ
@@ -85,9 +107,13 @@ Học sinh (hoặc phụ huynh) trò chuyện bằng tiếng Việt với trợ 
        │  Beat       │    │  • session:{user_id} ← hội thoại  │
        │             │    │  • cache catalog/slots             │
        │  • Hủy slot │    └───────────────────────────────────┘
-       │    hết hạn  │
-       │  • Email    │    ┌───────────────────────────────────┐
-       │    nhắc thi │    │  ChromaDB  (local vector store)   │
+       │    hết hạn  │         DB 0: slot gate, session,
+       │  • Email    │              schedule_task:{id} (2h)
+       │    nhắc thi │         DB 1: Celery broker
+       │  • Xếp lịch │         DB 2: Celery result backend
+       │    tối ưu   │
+       │  (OR-Tools  │    ┌───────────────────────────────────┐
+       │   CP-SAT)   │    │  ChromaDB  (local vector store)   │
        └─────────────┘    │  • Syllabus Trinity               │
                           │  • Chính sách thi                 │
                           │  • FAQ                            │
@@ -108,18 +134,19 @@ Học sinh (hoặc phụ huynh) trò chuyện bằng tiếng Việt với trợ 
 |--------------------------|-------------------------------|
 | Xác thực & cấp JWT | Đọc dữ liệu catalog/bookings |
 | Ghi booking (transaction) | AI Agent + SSE streaming |
+| Xếp lịch hàng loạt (batch) | Scheduling Agent (LangGraph) |
+| Celery: OR-Tools CP-SAT solver | Redis slot cache + schedule poll |
 | Django ORM migrations | ChromaDB RAG |
-| Celery tasks | Redis slot cache |
 | django-axes (brute-force) | Xác thực JWT (shared secret) |
 
 ---
 
 ## Trợ lý AI (Agent)
 
-### Công cụ (Tools)
+### Công cụ — Student / Parent
 
 | Tool | Mô tả | Ghi/Đọc |
-|------|-------|---------|
+|------|-------|--------|
 | `search_exam_docs` | Tìm kiếm trong syllabus, chính sách, FAQ qua ChromaDB | Đọc |
 | `list_courses` | Danh sách môn thi, cấp độ, học phí | Đọc |
 | `list_available_slots` | Slot còn chỗ trống (Redis-cached) | Đọc |
@@ -128,7 +155,17 @@ Học sinh (hoặc phụ huynh) trò chuyện bằng tiếng Việt với trợ 
 | `create_booking` | **Đặt lịch thi** — yêu cầu `confirm=True` | ⚠️ Ghi |
 | `cancel_booking` | **Hủy lịch thi** — yêu cầu `confirm=True` | ⚠️ Ghi |
 
-### Luồng xử lý Agent (ReAct)
+### Công cụ — CENTER_ADMIN (Scheduling Agent)
+
+| Tool | Mô tả | Ghi/Đọc |
+|------|-------|--------|
+| `list_examiners` | Danh sách giám khảo của trung tâm | Đọc |
+| `view_exam_calendar` | Xem lịch thi theo khoảng ngày | Đọc |
+| `auto_plan_schedule` | Gọi Celery solver → poll Redis → trả về kế hoạch tối ưu | Đọc |
+| `assign_examiner_to_slot` | Phân công giám khảo vào một slot cụ thể — yêu cầu xác nhận | ⚠️ Ghi |
+| `confirm_schedule_plan` | Lưu toàn bộ kế hoạch đã đề xuất vào DB — yêu cầu xác nhận | ⚠️ Ghi |
+
+### Luồng xử lý Agent — Student/Parent (ReAct)
 
 ```
 Câu hỏi người dùng
@@ -152,15 +189,44 @@ Câu hỏi người dùng
                             Django POST /api/bookings/create/
 ```
 
+### Luồng xử lý Agent — CENTER_ADMIN (LangGraph multi-node)
+
+```
+Admin gõ "xếp lịch thi tháng 5 2026"
+        │
+        ▼
+  classify_node — phân loại: batch_assign / assign_single / view_calendar / general
+        │
+        ▼
+  fetch_node — gọi auto_plan_schedule() hoặc view_exam_calendar()
+               (auto_plan_schedule: dispatch Celery task → poll Redis 15s)
+        │
+        ▼
+  propose_node — hiển thị kế hoạch từ DB (verbatim, không qua LLM)
+               → lưu pending_proposal vào Redis
+               → kết thúc lượt, trả SSE về frontend
+        │
+    [Turn mới: admin gõ "xác nhận"]
+        │
+        ▼
+  execute_node — đọc pending_proposal từ Redis
+               → gọi Django POST /api/centers/schedule/confirm/
+               → lưu lịch vào DB hàng loạt
+```
+
+> **Cơ chế resume:** `pending_proposal` được lưu trong Redis (TTL 30 phút). Khi admin gửi "xác nhận" ở lượt tiếp theo, agent router phát hiện `_resume=True` và đưa thẳng vào `execute_node` — bỏ qua lại toàn bộ pipeline fetch/propose.
+
 ### SSE Events (streaming)
 
 ```json
 { "type": "token",      "content": "Dựa trên..." }
 { "type": "tool_start", "tool": "list_available_slots" }
 { "type": "tool_end",   "tool": "list_available_slots" }
-{ "type": "done" }
+{ "type": "done",       "content": "<toàn bộ nội dung cuối cùng>" }
 { "type": "error",      "content": "Lỗi kết nối..." }
 ```
+
+> **Lưu ý:** Frontend ưu tiên `done.content` để ghi đè nội dung streaming. Điều này đảm bảo thông báo "⏳ Đang xếp lịch..." ban đầu được thay thế hoàn toàn bằng bảng kế hoạch thực tế khi phản hồi đến.
 
 ---
 
@@ -278,6 +344,8 @@ trinity_ai/
 │   ├── accounts/               Model User, JWT config, django-axes
 │   ├── bookings/               Model Booking, Celery tasks (nhắc thi, hủy slot)
 │   ├── catalog/                Model Instrument, Grade, ExamSlot, ExamCenter
+│   ├── centers/                ExamCenter, Examiner; BatchScheduleView;
+│   │                           Celery task solve_schedule_plan (OR-Tools CP-SAT)
 │   ├── fixtures/               Dữ liệu ban đầu (catalog, centers)
 │   └── tests/                  11 pytest-django tests
 │
@@ -285,13 +353,19 @@ trinity_ai/
 │   ├── agent/
 │   │   ├── llm.py              get_llm() + get_embeddings() (hỗ trợ ollama/openai/google)
 │   │   ├── rag.py              ChromaDB: index_docs(), search_docs()
-│   │   ├── memory.py           Redis: lưu lịch sử hội thoại (TTL 30 phút)
-│   │   ├── tools.py            7 LangChain tools + confirmation gate
+│   │   ├── memory.py           Redis: hội thoại (TTL 30') + pending_proposal
+│   │   ├── tools.py            7 LangChain tools (student/parent) + confirmation gate
+│   │   ├── scheduling_tools.py Scheduling tools cho CENTER_ADMIN
+│   │   ├── scheduling_graph.py LangGraph: classify→fetch→propose→execute
+│   │   ├── booking_graph.py    LangGraph: booking/cancel flow cho student
+│   │   ├── supervisor.py       Multi-agent supervisor (routing theo role)
+│   │   ├── state.py            Shared state schemas
 │   │   └── agent.py            ReAct agent + system prompt tiếng Việt
 │   ├── routers/
 │   │   ├── catalog.py          GET /catalog/courses, /catalog/slots
 │   │   ├── bookings.py         GET /bookings/
-│   │   └── agent.py            POST /agent/chat (SSE EventSourceResponse)
+│   │   ├── scheduling.py       GET /scheduling/examiners, /scheduling/calendar
+│   │   └── agent.py            POST /agent/chat (SSE) — _resume mechanism
 │   ├── services/
 │   │   └── slot_cache.py       Redis Lua atomic slot gate
 │   └── tests/                  36 pytest-asyncio tests
@@ -314,7 +388,8 @@ trinity_ai/
 │       └── components/
 │           ├── Navbar.jsx
 │           ├── ChatBubble.jsx  Avatar + full-width bot text, bubble user, blinking cursor
-│           ├── ConfirmBanner.jsx Banner xác nhận trước khi đặt/hủy
+│           │                   Hỗ trợ Markdown (bảng, in đậm, danh sách)
+│           ├── ConfirmBanner.jsx Banner xác nhận trước khi đặt/hủy/lưu lịch
 │           └── ProtectedRoute.jsx Route guard kiểm tra auth
 │
 ├── deployment/
@@ -402,17 +477,36 @@ PostgreSQL 15          Redis 7     ChromaDB
 
 ### AI Agent
 
+**Student / Parent — ReAct agent**
 - **Framework:** LangChain ReAct (Reason + Act), max 5 tool calls per turn
 - **Tools:** `search_exam_docs`, `list_courses`, `list_available_slots`, `get_booking_detail`, `list_my_bookings`, `create_booking`, `cancel_booking`
-- **Confirmation gate:** `create_booking` and `cancel_booking` require the user to send `confirm=True` before execution
+- **Confirmation gate:** `create_booking` and `cancel_booking` require explicit `confirm` from the user before execution
 - **Memory:** Redis conversation history, TTL 30 min per session
 - **RAG:** ChromaDB, 500-token chunks, `nomic-embed-text` embeddings, documents from `docs/`
+
+**CENTER_ADMIN — LangGraph scheduling agent**
+- **Framework:** LangGraph multi-node graph (`classify_node → fetch_node → propose_node → execute_node`)
+- **Tools:** `list_examiners`, `view_exam_calendar`, `auto_plan_schedule`, `assign_examiner_to_slot`, `confirm_schedule_plan`
+- **Batch scheduling:** `auto_plan_schedule` dispatches a Celery task that runs OR-Tools CP-SAT solver; FastAPI polls Redis for up to 15 s then streams the result
+- **Confirmation gate:** Admin must reply `xác nhận` in a separate turn before any write is committed; pending proposal is stored in Redis (`proposal:{user_id}`, TTL 30 min)
+- **Resume mechanism:** On the confirmation turn, the agent router detects `_resume=True` and routes directly to `execute_node`, skipping classify/fetch/propose
 
 ### Redis slot gate
 
 Atomic Lua script prevents race conditions on slot reservation:
 - `hold_slot(slot_id)` → `1` (held) / `0` (full) / `-1` (cache miss → DB fallback)
 - `release_slot(slot_id)` — rollback on booking failure
+
+### Redis key layout
+
+| DB | Key pattern | Purpose | TTL |
+|----|-------------|---------|-----|
+| 0 | `slot:{slot_id}` | Atomic slot counter (Lua gate) | — |
+| 0 | `session:{user_id}` | LangChain conversation history | 30 min |
+| 0 | `proposal:{user_id}` | Pending scheduling proposal | 30 min |
+| 0 | `schedule_task:{task_id}` | OR-Tools solver result (JSON) | 2 h |
+| 1 | Celery broker queues | Task messages | — |
+| 2 | Celery result backend | Task state/result | — |
 
 ---
 
@@ -583,8 +677,26 @@ SSE events:
   { "type": "token",      "content": "..." }
   { "type": "tool_start", "tool": "list_courses" }
   { "type": "tool_end",   "tool": "list_courses" }
-  { "type": "done" }
+  { "type": "done",       "content": "<full final content>" }
   { "type": "error",      "content": "..." }
+```
+
+### Scheduling (Django writes / FastAPI reads)
+
+```
+# Dispatch batch scheduling Celery task (CENTER_ADMIN only)
+POST /api/centers/schedule/batch/
+Body: { "year": 2026, "month": 5 }
+→ { "task_id": "uuid" }   (Celery task dispatched; result written to Redis)
+
+# Commit proposed plan to DB after admin confirms
+POST /api/centers/schedule/confirm/
+Body: { "task_id": "uuid" }
+→ { "assigned": 42 }      (number of slots updated)
+
+# Read scheduling data (FastAPI)
+GET  /api/scheduling/examiners        List examiners for the admin's center
+GET  /api/scheduling/calendar         ?date_from=2026-05-01&date_to=2026-05-31
 ```
 
 ---
@@ -603,13 +715,19 @@ trinity_ai/
 │   ├── agent/
 │   │   ├── llm.py              get_llm() + get_embeddings() (provider-agnostic)
 │   │   ├── rag.py              ChromaDB indexing + semantic search
-│   │   ├── memory.py           Redis conversation history
+│   │   ├── memory.py           Redis conversation history + pending_proposal
 │   │   ├── tools.py            7 LangChain tools + confirmation gate
-│   │   └── agent.py            ReAct agent + system prompt
+│   │   ├── scheduling_tools.py Scheduling tools (CENTER_ADMIN)
+│   │   ├── scheduling_graph.py LangGraph scheduling: classify→fetch→propose→execute
+│   │   ├── booking_graph.py    LangGraph booking/cancel flow
+│   │   ├── supervisor.py       Multi-agent supervisor (routes by user role)
+│   │   ├── state.py            Shared LangGraph state schemas
+│   │   └── agent.py            ReAct agent + Vietnamese system prompt
 │   ├── routers/
 │   │   ├── catalog.py          GET /catalog/courses, /catalog/slots
 │   │   ├── bookings.py         GET /bookings/
-│   │   └── agent.py            POST /agent/chat (SSE)
+│   │   ├── scheduling.py       GET /scheduling/examiners, /scheduling/calendar
+│   │   └── agent.py            POST /agent/chat (SSE) — _resume mechanism
 │   ├── services/
 │   │   └── slot_cache.py       Redis Lua slot gate
 │   └── tests/                  36 pytest tests

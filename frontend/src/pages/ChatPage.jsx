@@ -27,7 +27,7 @@ export default function ChatPage() {
     const {
         messages, streaming, streamingContent, activeTools, pendingConfirm, sessionId,
         addUserMessage, startStreaming, appendToken, addToolCall, removeToolCall,
-        finishStreaming, setError, setSessionId, clearPendingConfirm,
+        finishStreaming, setError, setSessionId, clearPendingConfirm, setStreamingContent,
     } = useChatStore()
     const { selectedSlot, reset: resetExam } = useExamStore()
 
@@ -112,10 +112,13 @@ export default function ChatPage() {
                 }
             }
 
-            // If no tokens were streamed (e.g. confirmation/execute path uses ainvoke),
-            // use the done event's content directly as the message.
-            if (!tokenReceived && doneContent) {
-                appendToken(doneContent)
+            // Always finalize with doneContent when available.
+            // This covers two cases:
+            //   1. No tokens streamed (confirmation/execute path) → use doneContent directly.
+            //   2. "Please wait" token was streamed first, then doneContent has the real plan
+            //      → replace the interim token with the actual result.
+            if (doneContent) {
+                setStreamingContent(doneContent)
             }
 
             finishStreaming(hasPendingConfirm)

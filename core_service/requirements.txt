@@ -8,6 +8,7 @@ psycopg2-binary==2.9.9
 redis==5.0.7
 celery==5.4.0
 django-celery-beat==2.6.0
+ortools>=9.8
 gunicorn==22.0.0
 whitenoise==6.7.0
 pytest==8.2.2

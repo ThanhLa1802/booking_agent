@@ -161,3 +161,43 @@ async def reschedule_booking_endpoint(
     if resp.status_code in (200, 201):
         return resp.json()
     raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
+
+
+# ── batch schedule task endpoints ─────────────────────────────────────────────
+
+@router.get("/tasks/{task_id}")
+async def get_schedule_task(
+    task_id: str,
+    current_user=Depends(_require_center_admin),
+):
+    """
+    Poll the status of a batch schedule task.
+    Returns the plan for preview before the admin confirms.
+    """
+    from fast_api_services.services.slot_cache import get_redis
+    rc = get_redis()
+    raw = await rc.get(f"schedule_task:{task_id}")
+    if raw is None:
+        raise HTTPException(status_code=404, detail="Task not found or expired.")
+    import json as _json
+    return _json.loads(raw)
+
+
+@router.post("/tasks/{task_id}/confirm")
+async def confirm_schedule_task(
+    task_id: str,
+    current_user=Depends(_require_center_admin),
+):
+    """
+    Commit the schedule plan to the database (proxied to Django).
+    Only callable after the admin has reviewed the plan from GET /tasks/{task_id}.
+    """
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"{settings.django_service_url}/api/centers/schedule/batch/{task_id}/confirm/",
+            headers={"Authorization": f"Bearer {current_user.raw_token}"},
+        )
+    if resp.status_code == 200:
+        return resp.json()
+    raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])

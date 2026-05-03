@@ -24,6 +24,10 @@ const useChatStore = create((set, get) => ({
     appendToken: (token) =>
         set((state) => ({ streamingContent: state.streamingContent + token })),
 
+    // Replace entire streaming content — used when doneContent supersedes intermediate tokens
+    // (e.g., "please wait..." token replaced by the actual schedule plan)
+    setStreamingContent: (content) => set({ streamingContent: content }),
+
     addToolCall: (toolName) =>
         set((state) => ({
             activeTools: [...state.activeTools.filter(t => t !== toolName), toolName],

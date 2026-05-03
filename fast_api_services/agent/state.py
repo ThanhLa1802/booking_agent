@@ -28,6 +28,7 @@ class SchedulingState(TypedDict):
     messages: Annotated[list, add_messages]
     user_role: str          # "CENTER_ADMIN"
     # ── scheduling task context ──────────────────────────────────────────────
-    task_type: str          # "assign_examiner" | "view_calendar" | "reschedule" | "general"
+    task_type: str          # "assign_examiner" | "view_calendar" | "reschedule" | "batch_assign" | "general"
     proposal: Optional[dict]   # structured proposal waiting for human confirmation
     confirmed: bool            # True once the user has explicitly confirmed the proposal
+    assignment_task_id: Optional[str]   # Celery task_id for batch schedule plans

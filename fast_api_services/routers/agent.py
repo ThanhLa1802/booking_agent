@@ -18,10 +18,8 @@ import json
 import logging
 import re
 from typing import AsyncGenerator, Optional
-from wsgiref.validate import validator
-
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +38,8 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None  # reserved for future multi-session support
 
     #validate message content for safety (basic example, can be expanded with more robust checks)
-    @validator("message")
+    @field_validator("message")
+    @classmethod
     def validate_message(cls, v):
         dangerous = [r"ignore.*instruction", r"system.*override", r"bypass.*confirmation"]
         for pattern in dangerous:
@@ -161,6 +160,20 @@ async def chat(
         from langchain_core.messages import HumanMessage
 
         _resume = bool(pending_proposal and is_confirmation)
+
+        # ── early "please wait" feedback for batch scheduling ──────────────
+        # batch scheduling takes 15+ s (Celery task + Redis polling).
+        # Yield a status token immediately so the admin sees feedback.
+        import re as _batch_re
+        _is_batch_sched = (
+            not _resume
+            and user_role == "CENTER_ADMIN"
+            and _batch_re.search(r"xếp lịch|lập lịch", request.message, _batch_re.IGNORECASE)
+            and _batch_re.search(r"tháng|tuần|month|week|\d{4}-\d{2}-\d{2}", request.message, _batch_re.IGNORECASE)
+        )
+        if _is_batch_sched:
+            yield {"data": json.dumps({"type": "token", "content": "⏳ Đang xếp lịch, vui lòng đợi trong giây lát..."})}
+
         initial_state = {
             "messages": [HumanMessage(content=request.message)],
             "user_role": user_role,
