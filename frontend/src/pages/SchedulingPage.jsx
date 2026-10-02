@@ -30,6 +30,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined'
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined'
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined'
@@ -56,6 +57,14 @@ const STYLE_LABEL = {
   CLASSICAL_JAZZ: 'Classical & Jazz',
   ROCK_POP: 'Rock & Pop',
   THEORY: 'Theory',
+}
+
+const groupHeaderSx = {
+  px: 2.5,
+  py: 1.5,
+  bgcolor: 'background.default',
+  borderBottom: '1px solid',
+  borderColor: 'divider',
 }
 
 export default function SchedulingPage() {
@@ -129,7 +138,6 @@ export default function SchedulingPage() {
     }
   }
 
-  // Group slots by date
   const grouped = slots.reduce((acc, s) => {
     const key = s.exam_date
     if (!acc[key]) acc[key] = []
@@ -138,7 +146,6 @@ export default function SchedulingPage() {
   }, {})
   const sortedDates = Object.keys(grouped).sort()
 
-  // Group examiners by center
   const examinersByCenter = examiners.reduce((acc, e) => {
     const key = `${e.center_name} — ${e.center_city}`
     if (!acc[key]) acc[key] = []
@@ -146,17 +153,21 @@ export default function SchedulingPage() {
     return acc
   }, {})
 
+  const assignedCount = slots.filter((s) => s.examiner_id).length
+
   return (
     <>
       <Navbar />
-      <Container maxWidth="xl" sx={{ py: 5, px: { xs: 2, md: 4 } }}>
+      <Container maxWidth="xl" sx={{ py: { xs: 4, md: 6 }, px: { xs: 2, md: 4 } }}>
         {/* Header */}
-        <Stack direction="row" alignItems="center" spacing={2} mb={1}>
-          <CalendarMonthOutlinedIcon sx={{ color: '#A0825C', fontSize: 32 }} />
+        <Stack direction="row" alignItems="flex-end" spacing={2} mb={4}>
           <Box flexGrow={1}>
-            <Typography variant="h4">Quản lý lịch thi</Typography>
-            <Typography variant="body2" color="text.secondary" mt={0.5}>
-              Phân công giám khảo cho các ca thi
+            <Typography variant="overline" color="primary.main">
+              Trung tâm
+            </Typography>
+            <Typography variant="h2">Quản lý lịch thi</Typography>
+            <Typography variant="body1" color="text.secondary" mt={0.5}>
+              Phân công giám khảo cho các ca thi.
             </Typography>
           </Box>
           <Tooltip title="Làm mới">
@@ -166,16 +177,23 @@ export default function SchedulingPage() {
           </Tooltip>
         </Stack>
 
+        {/* Stats */}
+        {!loading && slots.length > 0 && (
+          <Stack direction="row" spacing={1.5} mb={3} flexWrap="wrap" useFlexGap>
+            <Chip label={`${slots.length} ca thi`} size="small" />
+            <Chip label={`${assignedCount} đã phân công`} size="small" color="success" variant="outlined" />
+            <Chip
+              label={`${slots.length - assignedCount} chưa phân công`}
+              size="small"
+              color="warning"
+              variant="outlined"
+            />
+          </Stack>
+        )}
+
         {/* Tabs */}
-        <Paper
-          variant="outlined"
-          sx={{ mb: 3, border: '1px solid #EBE9E6' }}
-        >
-          <Tabs
-            value={activeTab}
-            onChange={(_, v) => setActiveTab(v)}
-            sx={{ px: 1 }}
-          >
+        <Paper variant="outlined" sx={{ mb: 3 }}>
+          <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ px: 1 }}>
             <Tab
               icon={<CalendarMonthOutlinedIcon sx={{ fontSize: 18 }} />}
               iconPosition="start"
@@ -206,9 +224,8 @@ export default function SchedulingPage() {
         {/* ── TAB 0: Lịch thi ──────────────────────────────────── */}
         {activeTab === 0 && (
           <>
-            {/* Date filter */}
-            <Paper variant="outlined" sx={{ p: 2.5, mb: 3, border: '1px solid #EBE9E6' }}>
-              <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="center">
+            <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
+              <Stack direction="row" spacing={2} flexWrap="wrap" alignItems="center" useFlexGap>
                 <TextField
                   label="Từ ngày"
                   type="date"
@@ -233,36 +250,12 @@ export default function SchedulingPage() {
               </Stack>
             </Paper>
 
-            {/* Stats */}
-            {!loading && slots.length > 0 && (
-              <Stack direction="row" spacing={1.5} mb={3} flexWrap="wrap">
-                <Chip
-                  label={`${slots.length} ca thi`}
-                  size="small"
-                  sx={{ bgcolor: '#F0ECE6', color: '#6B5E4F', fontWeight: 500 }}
-                />
-                <Chip
-                  label={`${slots.filter(s => s.examiner_id).length} đã phân công`}
-                  size="small"
-                  sx={{ bgcolor: 'rgba(92,138,103,0.1)', color: '#5C8A67', fontWeight: 500 }}
-                />
-                <Chip
-                  label={`${slots.filter(s => !s.examiner_id).length} chưa phân công`}
-                  size="small"
-                  sx={{ bgcolor: 'rgba(196,148,80,0.1)', color: '#C49450', fontWeight: 500 }}
-                />
-              </Stack>
-            )}
-
             {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                <CircularProgress size={28} />
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+                <CircularProgress size={28} thickness={3} />
               </Box>
             ) : slots.length === 0 ? (
-              <Paper
-                variant="outlined"
-                sx={{ p: 4, textAlign: 'center', border: '1px solid #EBE9E6' }}
-              >
+              <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}>
                 <Typography color="text.secondary">
                   Không có ca thi nào trong khoảng thời gian này.
                 </Typography>
@@ -270,21 +263,12 @@ export default function SchedulingPage() {
             ) : (
               <Stack spacing={3}>
                 {sortedDates.map((date) => (
-                  <Paper
-                    key={date}
-                    variant="outlined"
-                    sx={{ border: '1px solid #EBE9E6', overflow: 'hidden' }}
-                  >
-                    {/* Date header */}
-                    <Box
-                      sx={{
-                        px: 2.5,
-                        py: 1.25,
-                        bgcolor: '#F5F4F2',
-                        borderBottom: '1px solid #EBE9E6',
-                      }}
-                    >
-                      <Typography fontWeight={500} fontSize="0.875rem">
+                  <Paper key={date} variant="outlined" sx={{ overflow: 'hidden' }}>
+                    <Box sx={groupHeaderSx}>
+                      <Typography
+                        variant="overline"
+                        sx={{ fontSize: '0.6875rem', letterSpacing: '0.08em' }}
+                      >
                         {new Date(date + 'T00:00:00').toLocaleDateString('vi-VN', {
                           weekday: 'long',
                           year: 'numeric',
@@ -304,7 +288,7 @@ export default function SchedulingPage() {
                             <TableCell>Loại</TableCell>
                             <TableCell align="center">Đã đặt</TableCell>
                             <TableCell>Giám khảo</TableCell>
-                            <TableCell align="center" sx={{ width: 80 }}></TableCell>
+                            <TableCell align="center" sx={{ width: 80 }} />
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -313,12 +297,12 @@ export default function SchedulingPage() {
                               key={slot.id}
                               hover
                               sx={{
-                                bgcolor: !slot.examiner_id
-                                  ? 'rgba(196,148,80,0.04)'
+                                bgcolor: (!slot.examiner_id)
+                                  ? (theme) => alpha(theme.palette.warning.main, 0.05)
                                   : 'inherit',
                               }}
                             >
-                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                              <TableCell sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                                 {slot.start_time?.substring(0, 5)}
                               </TableCell>
                               <TableCell>
@@ -327,9 +311,7 @@ export default function SchedulingPage() {
                                 </Typography>
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2">
-                                  {slot.center_name}
-                                </Typography>
+                                <Typography variant="body2">{slot.center_name}</Typography>
                                 <Typography variant="caption" color="text.secondary">
                                   {slot.center_city}
                                 </Typography>
@@ -339,29 +321,21 @@ export default function SchedulingPage() {
                                   label={STYLE_LABEL[slot.style] || slot.style}
                                   size="small"
                                   variant="outlined"
-                                  sx={{ fontSize: '0.7rem' }}
                                 />
                               </TableCell>
                               <TableCell align="center">
-                                <Typography variant="body2">
+                                <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                                   {slot.capacity - slot.available_capacity}/{slot.capacity}
                                 </Typography>
                               </TableCell>
                               <TableCell>
                                 {slot.examiner_name ? (
                                   <Stack direction="row" alignItems="center" spacing={0.75}>
-                                    <CheckCircleIcon
-                                      sx={{ fontSize: 16, color: '#5C8A67' }}
-                                    />
-                                    <Typography variant="body2">
-                                      {slot.examiner_name}
-                                    </Typography>
+                                    <CheckCircleIcon sx={{ fontSize: 16, color: 'success.main' }} />
+                                    <Typography variant="body2">{slot.examiner_name}</Typography>
                                   </Stack>
                                 ) : (
-                                  <Typography
-                                    variant="body2"
-                                    sx={{ color: '#C49450', fontStyle: 'italic' }}
-                                  >
+                                  <Typography variant="body2" sx={{ color: 'warning.main', fontStyle: 'italic' }}>
                                     Chưa phân công
                                   </Typography>
                                 )}
@@ -371,9 +345,7 @@ export default function SchedulingPage() {
                                   <IconButton
                                     size="small"
                                     onClick={() => handleOpenAssign(slot)}
-                                    sx={{
-                                      color: slot.examiner_id ? 'text.secondary' : '#C49450',
-                                    }}
+                                    sx={{ color: slot.examiner_id ? 'text.secondary' : 'warning.main' }}
                                   >
                                     <PersonAddOutlinedIcon sx={{ fontSize: 18 }} />
                                   </IconButton>
@@ -395,46 +367,20 @@ export default function SchedulingPage() {
         {activeTab === 1 && (
           <>
             {loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                <CircularProgress size={28} />
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+                <CircularProgress size={28} thickness={3} />
               </Box>
             ) : examiners.length === 0 ? (
-              <Paper
-                variant="outlined"
-                sx={{ p: 4, textAlign: 'center', border: '1px solid #EBE9E6' }}
-              >
-                <Typography color="text.secondary">
-                  Chưa có dữ liệu giám khảo.
-                </Typography>
+              <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}>
+                <Typography color="text.secondary">Chưa có dữ liệu giám khảo.</Typography>
               </Paper>
             ) : (
               <Stack spacing={3}>
                 {Object.entries(examinersByCenter).map(([centerLabel, list]) => (
-                  <Paper
-                    key={centerLabel}
-                    variant="outlined"
-                    sx={{ border: '1px solid #EBE9E6', overflow: 'hidden' }}
-                  >
-                    {/* Center header */}
-                    <Box
-                      sx={{
-                        px: 2.5,
-                        py: 1.25,
-                        bgcolor: '#F5F4F2',
-                        borderBottom: '1px solid #EBE9E6',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1.5,
-                      }}
-                    >
-                      <Typography fontWeight={500} fontSize="0.875rem">
-                        {centerLabel}
-                      </Typography>
-                      <Chip
-                        label={`${list.length} giám khảo`}
-                        size="small"
-                        sx={{ bgcolor: '#EBE9E6', color: '#707070', fontWeight: 500 }}
-                      />
+                  <Paper key={centerLabel} variant="outlined" sx={{ overflow: 'hidden' }}>
+                    <Box sx={{ ...groupHeaderSx, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Typography variant="h6">{centerLabel}</Typography>
+                      <Chip label={`${list.length} giám khảo`} size="small" />
                     </Box>
 
                     <TableContainer>
@@ -458,10 +404,8 @@ export default function SchedulingPage() {
                                     sx={{
                                       width: 32,
                                       height: 32,
-                                      bgcolor: '#F0ECE6',
-                                      color: '#A0825C',
-                                      fontSize: '0.8125rem',
-                                      fontWeight: 500,
+                                      bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                                      color: 'primary.main',
                                     }}
                                   >
                                     {e.name.charAt(0)}
@@ -477,47 +421,24 @@ export default function SchedulingPage() {
                                 </Typography>
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2">
-                                  {e.phone || '—'}
-                                </Typography>
+                                <Typography variant="body2">{e.phone || '—'}</Typography>
                               </TableCell>
                               <TableCell>
                                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                                   {e.specialization_names?.map((s) => (
-                                    <Chip
-                                      key={s}
-                                      label={s}
-                                      size="small"
-                                      variant="outlined"
-                                      sx={{ fontSize: '0.7rem' }}
-                                    />
+                                    <Chip key={s} label={s} size="small" variant="outlined" />
                                   ))}
                                 </Stack>
                               </TableCell>
                               <TableCell align="center">
-                                <Chip
-                                  label={`${e.max_exams_per_day} ca`}
-                                  size="small"
-                                  sx={{
-                                    bgcolor: '#F0ECE6',
-                                    color: '#6B5E4F',
-                                    fontWeight: 500,
-                                    fontSize: '0.75rem',
-                                  }}
-                                />
+                                <Chip label={`${e.max_exams_per_day} ca`} size="small" />
                               </TableCell>
                               <TableCell align="center">
                                 <Chip
                                   label={e.is_active ? 'Hoạt động' : 'Ngưng'}
                                   size="small"
-                                  sx={{
-                                    bgcolor: e.is_active
-                                      ? 'rgba(92,138,103,0.1)'
-                                      : 'rgba(194,84,80,0.1)',
-                                    color: e.is_active ? '#5C8A67' : '#C25450',
-                                    fontWeight: 500,
-                                    fontSize: '0.75rem',
-                                  }}
+                                  variant="outlined"
+                                  color={e.is_active ? 'success' : 'error'}
                                 />
                               </TableCell>
                             </TableRow>
@@ -549,15 +470,13 @@ export default function SchedulingPage() {
             )}
           </DialogTitle>
 
-          <DialogContent dividers sx={{ borderColor: '#EBE9E6' }}>
+          <DialogContent dividers>
             {suggLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                <CircularProgress size={24} />
+                <CircularProgress size={24} thickness={3} />
               </Box>
             ) : suggestions.length === 0 ? (
-              <Alert severity="warning" sx={{ fontSize: '0.875rem' }}>
-                Không có giám khảo phù hợp hoặc còn rảnh vào ngày này.
-              </Alert>
+              <Alert severity="warning">Không có giám khảo phù hợp hoặc còn rảnh vào ngày này.</Alert>
             ) : (
               <>
                 <Typography variant="body2" color="text.secondary" mb={1.5}>
@@ -569,7 +488,7 @@ export default function SchedulingPage() {
                       key={s.examiner.id}
                       selected={selectedExaminer?.examiner.id === s.examiner.id}
                       onClick={() => setSelectedExaminer(s)}
-                      sx={{ borderRadius: 2, mb: 0.5 }}
+                      sx={{ mb: 0.5 }}
                     >
                       <ListItemText
                         primary={s.examiner.name}
@@ -578,7 +497,7 @@ export default function SchedulingPage() {
                         secondaryTypographyProps={{ fontSize: '0.8125rem' }}
                       />
                       {selectedExaminer?.examiner.id === s.examiner.id && (
-                        <CheckCircleIcon sx={{ color: '#5C8A67' }} />
+                        <CheckCircleIcon sx={{ color: 'success.main' }} />
                       )}
                     </ListItemButton>
                   ))}
@@ -588,8 +507,8 @@ export default function SchedulingPage() {
 
             {dialogSlot?.examiner_name && (
               <>
-                <Divider sx={{ my: 2, borderColor: '#EBE9E6' }} />
-                <Alert severity="info" sx={{ fontSize: '0.875rem' }}>
+                <Divider sx={{ my: 2 }} />
+                <Alert severity="info">
                   Hiện tại: <strong>{dialogSlot.examiner_name}</strong>. Chọn giám khảo khác để thay thế.
                 </Alert>
               </>
@@ -605,7 +524,7 @@ export default function SchedulingPage() {
               disabled={!selectedExaminer || confirming}
               onClick={handleAssign}
             >
-              {confirming ? 'Đang phân công...' : 'Xác nhận'}
+              {confirming ? 'Đang phân công…' : 'Xác nhận'}
             </Button>
           </DialogActions>
         </Dialog>

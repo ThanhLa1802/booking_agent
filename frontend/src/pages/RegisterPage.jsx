@@ -1,16 +1,17 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Alert,
   Box,
   Button,
   CircularProgress,
-  Container,
+  Link,
   MenuItem,
   TextField,
   Typography,
 } from '@mui/material'
 import apiClient from '../api/client'
+import AuthLayout from '../components/AuthLayout'
 
 const ROLES = [
   { value: 'STUDENT', label: 'Học viên' },
@@ -66,91 +67,76 @@ export default function RegisterPage() {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100svh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        px: 2,
-      }}
+    <AuthLayout
+      eyebrow="Tạo tài khoản"
+      title="Bắt đầu hành trình âm nhạc"
+      subtitle="Chỉ mất một phút để bắt đầu."
     >
-      <Container maxWidth="xs" disableGutters>
-        {/* Wordmark */}
-        <Box sx={{ mb: 5, textAlign: 'center' }}>
-          <Typography
-            variant="h4"
-            fontWeight={500}
-            letterSpacing="-0.03em"
-            mb={0.5}
-          >
-            Trinity College London
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Tạo tài khoản mới
-          </Typography>
-        </Box>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
 
-        {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
-
-        <Box component="form" onSubmit={handleSubmit} noValidate>
-          <TextField
-            label="Tên đăng nhập"
-            name="username"
-            value={form.username}
-            onChange={handleChange}
-            fullWidth
-            required
-            autoComplete="username"
-            autoFocus
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Email"
-            name="email"
-            type="email"
-            value={form.email}
-            onChange={handleChange}
-            fullWidth
-            required
-            autoComplete="email"
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Mật khẩu"
-            name="password"
-            type="password"
-            value={form.password}
-            onChange={handleChange}
-            fullWidth
-            required
-            autoComplete="new-password"
-            inputProps={{ minLength: 8 }}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Xác nhận mật khẩu"
-            name="confirmPassword"
-            type="password"
-            value={form.confirmPassword}
-            onChange={handleChange}
-            fullWidth
-            required
-            autoComplete="new-password"
-            sx={{ mb: 2 }}
-          />
+      <Box component="form" onSubmit={handleSubmit} noValidate>
+        <TextField
+          label="Tên đăng nhập"
+          name="username"
+          value={form.username}
+          onChange={handleChange}
+          fullWidth
+          required
+          autoComplete="username"
+          autoFocus
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          label="Email"
+          name="email"
+          type="email"
+          value={form.email}
+          onChange={handleChange}
+          fullWidth
+          required
+          autoComplete="email"
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          label="Mật khẩu"
+          name="password"
+          type="password"
+          value={form.password}
+          onChange={handleChange}
+          fullWidth
+          required
+          autoComplete="new-password"
+          inputProps={{ minLength: 8 }}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          label="Xác nhận mật khẩu"
+          name="confirmPassword"
+          type="password"
+          value={form.confirmPassword}
+          onChange={handleChange}
+          fullWidth
+          required
+          autoComplete="new-password"
+          sx={{ mb: 2 }}
+        />
+        <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
           <TextField
             select
             label="Vai trò"
             name="role"
             value={form.role}
             onChange={handleChange}
-            fullWidth
-            sx={{ mb: 2 }}
+            sx={{ flex: '1 1 140px' }}
           >
             {ROLES.map((r) => (
-              <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
+              <MenuItem key={r.value} value={r.value}>
+                {r.label}
+              </MenuItem>
             ))}
           </TextField>
           <TextField
@@ -158,35 +144,21 @@ export default function RegisterPage() {
             name="phone"
             value={form.phone}
             onChange={handleChange}
-            fullWidth
             autoComplete="tel"
-            sx={{ mb: 3 }}
+            sx={{ flex: '1 1 180px' }}
           />
-          <Button
-            type="submit"
-            variant="contained"
-            fullWidth
-            size="large"
-            disabled={loading}
-          >
-            {loading ? (
-              <CircularProgress size={20} sx={{ color: 'inherit' }} />
-            ) : (
-              'Đăng ký'
-            )}
-          </Button>
         </Box>
+        <Button type="submit" variant="contained" fullWidth size="large" disabled={loading}>
+          {loading ? <CircularProgress size={20} sx={{ color: 'inherit' }} /> : 'Đăng ký'}
+        </Button>
+      </Box>
 
-        <Typography variant="body2" color="text.secondary" align="center" mt={3}>
-          Đã có tài khoản?{' '}
-          <Link
-            to="/login"
-            style={{ color: '#A0825C', textDecoration: 'none', fontWeight: 500 }}
-          >
-            Đăng nhập
-          </Link>
-        </Typography>
-      </Container>
-    </Box>
+      <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 3 }}>
+        Đã có tài khoản?{' '}
+        <Link component={RouterLink} to="/login">
+          Đăng nhập
+        </Link>
+      </Typography>
+    </AuthLayout>
   )
 }

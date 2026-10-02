@@ -1,40 +1,38 @@
 import { Avatar, Box } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 /**
- * ChatBubble — minimal, typography-first.
+ * ChatBubble — typography-first.
  *
- * User  : compact pill on the right, near-black background.
- * Bot   : avatar on the left, full-width text, no bubble.
- *         Avatar breathes (fermata pulse) while streaming.
+ * User : compact bubble on the right, brass fill.
+ * Bot  : brass monogram on the left, full-width text, no bubble.
+ *        Avatar breathes (fermata pulse) while streaming.
  */
 export default function ChatBubble({ role, content, streaming = false }) {
   const isUser = role === 'user'
 
   if (isUser) {
     return (
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          mb: 3,
-          px: 0.5,
-        }}
-      >
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3, px: 0.5 }}>
         <Box
           sx={{
-            px: 2.5,
+            px: 2.25,
             py: 1.25,
             maxWidth: '72%',
-            bgcolor: '#171717',
-            color: '#FCFCFB',
-            borderRadius: '20px 20px 4px 20px',
+            bgcolor: 'primary.main',
+            color: 'primary.contrastText',
+            borderRadius: '14px 14px 4px 14px',
             fontSize: '0.9375rem',
             lineHeight: 1.6,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
+            boxShadow: (theme) =>
+              theme.palette.mode === 'dark'
+                ? 'none'
+                : '0 2px 10px rgba(122,92,51,0.18)',
           }}
         >
           {content}
@@ -43,13 +41,12 @@ export default function ChatBubble({ role, content, streaming = false }) {
     )
   }
 
-  // ── Bot message ────────────────────────────────────────────────
   return (
     <Box
       sx={{
         display: 'flex',
         alignItems: 'flex-start',
-        mb: 3,
+        mb: 3.5,
         px: 0.5,
         gap: 1.5,
       }}
@@ -57,8 +54,8 @@ export default function ChatBubble({ role, content, streaming = false }) {
       <Avatar
         className={streaming ? 'ai-avatar-streaming' : ''}
         sx={{
-          bgcolor: '#F0ECE6',
-          color: '#A0825C',
+          bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.12),
+          color: 'primary.main',
           width: 32,
           height: 32,
           mt: 0.25,
@@ -77,36 +74,35 @@ export default function ChatBubble({ role, content, streaming = false }) {
           color: 'text.primary',
           wordBreak: 'break-word',
 
-          // ── Markdown elements ──────────────────────────────
           '& p': { m: 0, mb: 1 },
           '& p:last-child': { mb: 0 },
           '& ul, & ol': { pl: 2.5, my: 0.5 },
           '& li': { mb: 0.375, lineHeight: 1.65 },
           '& li > p': { mb: 0 },
           '& h1, & h2, & h3': {
-            fontWeight: 600,
+            fontFamily: '"Playfair Display", Georgia, serif',
+            fontWeight: 500,
             letterSpacing: '-0.01em',
           },
-          '& h1': { fontSize: '1.15rem', mt: 2, mb: 0.75 },
-          '& h2': { fontSize: '1.05rem', mt: 1.5, mb: 0.5 },
-          '& h3': { fontSize: '0.9375rem', mt: 1, mb: 0.5 },
+          '& h1': { fontSize: '1.25rem', mt: 2, mb: 0.75 },
+          '& h2': { fontSize: '1.1rem', mt: 1.5, mb: 0.5 },
+          '& h3': { fontSize: '1rem', mt: 1, mb: 0.5 },
           '& strong': { fontWeight: 600 },
+          '& a': { color: 'primary.main' },
 
-          // Inline code
           '& :not(pre) > code': {
             fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-            bgcolor: '#F0ECE6',
-            color: '#6B5E4F',
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
+            color: 'primary.main',
             px: 0.625,
             py: 0.125,
             borderRadius: '4px',
             fontSize: '0.82em',
           },
 
-          // Code blocks
           '& pre': {
-            bgcolor: '#1A1A1C',
-            color: '#E0DED8',
+            bgcolor: 'text.primary',
+            color: 'background.default',
             p: 2,
             borderRadius: '8px',
             overflow: 'auto',
@@ -121,9 +117,9 @@ export default function ChatBubble({ role, content, streaming = false }) {
             },
           },
 
-          // Blockquote
           '& blockquote': {
-            borderLeft: '2px solid #A0825C',
+            borderLeft: '2px solid',
+            borderColor: 'primary.main',
             pl: 2,
             ml: 0,
             my: 0.75,
@@ -131,7 +127,6 @@ export default function ChatBubble({ role, content, streaming = false }) {
             fontStyle: 'italic',
           },
 
-          // Tables
           '& table': {
             borderCollapse: 'collapse',
             width: '100%',
@@ -139,25 +134,26 @@ export default function ChatBubble({ role, content, streaming = false }) {
             fontSize: '0.8125rem',
           },
           '& th, & td': {
-            border: '1px solid #EBE9E6',
+            border: '1px solid',
+            borderColor: 'divider',
             px: 1.25,
             py: 0.625,
             textAlign: 'left',
           },
           '& th': {
-            bgcolor: '#F5F4F2',
+            bgcolor: 'background.default',
             fontWeight: 600,
-            color: '#707070',
-            fontSize: '0.75rem',
+            color: 'text.secondary',
+            fontSize: '0.6875rem',
             textTransform: 'uppercase',
-            letterSpacing: '0.05em',
+            letterSpacing: '0.08em',
           },
 
-          // Dividers
           '& hr': {
             my: 1.5,
             border: 'none',
-            borderTop: '1px solid #EBE9E6',
+            borderTop: '1px solid',
+            borderColor: 'divider',
           },
         }}
       >
@@ -169,14 +165,14 @@ export default function ChatBubble({ role, content, streaming = false }) {
               display: 'inline-block',
               width: 2,
               height: '1.1em',
-              bgcolor: '#A0825C',
+              bgcolor: 'primary.main',
               ml: '2px',
               verticalAlign: 'text-bottom',
               '@keyframes blink': {
                 '0%, 100%': { opacity: 1 },
-                '50%': { opacity: 0.25 },
+                '50%': { opacity: 0.2 },
               },
-              animation: 'blink 0.8s step-start infinite',
+              animation: 'blink 0.9s step-start infinite',
             }}
           />
         )}

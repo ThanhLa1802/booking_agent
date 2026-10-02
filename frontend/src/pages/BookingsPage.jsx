@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import {
   Alert,
   Box,
   Chip,
   CircularProgress,
   Container,
+  Link,
+  Paper,
   Table,
   TableBody,
   TableCell,
@@ -17,10 +20,26 @@ import { getMyBookings } from '../api'
 import Navbar from '../components/Navbar'
 
 const STATUS_CONFIG = {
-  CONFIRMED: { label: 'Đã xác nhận', color: '#5C8A67' },
-  PENDING: { label: 'Chờ xác nhận', color: '#C49450' },
-  CANCELLED: { label: 'Đã huỷ', color: '#C25450' },
-  COMPLETED: { label: 'Hoàn thành', color: '#707070' },
+  CONFIRMED: { label: 'Đã xác nhận', color: 'success.main' },
+  PENDING: { label: 'Chờ xác nhận', color: 'warning.main' },
+  CANCELLED: { label: 'Đã huỷ', color: 'error.main' },
+  COMPLETED: { label: 'Hoàn thành', color: 'text.secondary' },
+}
+
+function StatusChip({ status }) {
+  const cfg = STATUS_CONFIG[status] || { label: status, color: 'text.secondary' }
+  return (
+    <Chip
+      size="small"
+      variant="outlined"
+      label={cfg.label}
+      sx={{
+        color: cfg.color,
+        borderColor: cfg.color,
+        fontWeight: 500,
+      }}
+    />
+  )
 }
 
 export default function BookingsPage() {
@@ -44,82 +63,115 @@ export default function BookingsPage() {
     fetch()
   }, [])
 
+  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('vi-VN') : '—')
+
   return (
     <>
       <Navbar />
-      <Container maxWidth="lg" sx={{ py: 5, px: { xs: 2, sm: 3 } }}>
-        <Typography variant="h4" mb={1}>Lịch thi của tôi</Typography>
-        <Typography variant="body2" color="text.secondary" mb={4}>
-          Theo dõi các kỳ thi đã đăng ký
-        </Typography>
+      <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 }, px: { xs: 2, sm: 3 } }}>
+        {/* Header */}
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="overline" color="primary.main">
+            Đăng ký
+          </Typography>
+          <Typography variant="h2" sx={{ mb: 1 }}>
+            Lịch thi của tôi
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Theo dõi các kỳ thi bạn đã đăng ký.
+          </Typography>
+        </Box>
 
         {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
         {loading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-            <CircularProgress size={28} />
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+            <CircularProgress size={28} thickness={3} />
           </Box>
         )}
 
         {!loading && bookings.length === 0 && (
-          <Box className="empty-state">
+          <Box sx={{ textAlign: 'center', py: 10, color: 'text.secondary' }}>
+            <Typography variant="body1" sx={{ mb: 0.5 }}>
+              Bạn chưa có lịch thi nào.
+            </Typography>
             <Typography variant="body2">
-              Bạn chưa có lịch thi nào.{' '}
-              <a href="/catalog" style={{ color: '#A0825C', textDecoration: 'none', fontWeight: 500 }}>
-                Xem danh mục
-              </a>
+              <Link component={RouterLink} to="/catalog">
+                Xem danh mục kỳ thi
+              </Link>
             </Typography>
           </Box>
         )}
 
         {!loading && bookings.length > 0 && (
-          <TableContainer sx={{ border: '1px solid #EBE9E6', borderRadius: 2 }}>
-            <Table size="medium">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Mã đặt lịch</TableCell>
-                  <TableCell>Học viên</TableCell>
-                  <TableCell>Môn thi</TableCell>
-                  <TableCell>Trung tâm</TableCell>
-                  <TableCell>Ngày thi</TableCell>
-                  <TableCell>Giờ</TableCell>
-                  <TableCell>Thành phố</TableCell>
-                  <TableCell>Trạng thái</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {bookings.map((b) => (
-                  <TableRow key={b.id} hover>
-                    <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.8125rem' }}>
-                      #{b.id}
-                    </TableCell>
-                    <TableCell>{b.student_name}</TableCell>
-                    <TableCell>{b.slot_detail?.course || '—'}</TableCell>
-                    <TableCell>{b.slot_detail?.center || '—'}</TableCell>
-                    <TableCell>
-                      {b.slot_detail?.exam_date
-                        ? new Date(b.slot_detail.exam_date).toLocaleDateString('vi-VN')
-                        : '—'}
-                    </TableCell>
-                    <TableCell>{b.slot_detail?.start_time || '—'}</TableCell>
-                    <TableCell>{b.slot_detail?.city || '—'}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={STATUS_CONFIG[b.status]?.label || b.status}
-                        sx={{
-                          bgcolor: `${STATUS_CONFIG[b.status]?.color || '#707070'}14`,
-                          color: STATUS_CONFIG[b.status]?.color || '#707070',
-                          fontWeight: 500,
-                          fontSize: '0.75rem',
-                        }}
-                      />
-                    </TableCell>
+          <>
+            {/* Desktop table */}
+            <TableContainer
+              component={Paper}
+              variant="outlined"
+              sx={{ display: { xs: 'none', md: 'block' } }}
+            >
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Mã</TableCell>
+                    <TableCell>Học viên</TableCell>
+                    <TableCell>Môn thi</TableCell>
+                    <TableCell>Trung tâm</TableCell>
+                    <TableCell>Ngày thi</TableCell>
+                    <TableCell>Giờ</TableCell>
+                    <TableCell>Trạng thái</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {bookings.map((b) => (
+                    <TableRow key={b.id} hover>
+                      <TableCell sx={{ fontFamily: '"JetBrains Mono", monospace', fontSize: '0.8125rem' }}>
+                        #{b.id}
+                      </TableCell>
+                      <TableCell>{b.student_name}</TableCell>
+                      <TableCell>{b.slot_detail?.course || '—'}</TableCell>
+                      <TableCell>
+                        {b.slot_detail?.center || '—'}
+                        {b.slot_detail?.city ? (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {b.slot_detail.city}
+                          </Typography>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>{fmtDate(b.slot_detail?.exam_date)}</TableCell>
+                      <TableCell>{b.slot_detail?.start_time || '—'}</TableCell>
+                      <TableCell>
+                        <StatusChip status={b.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {/* Mobile cards */}
+            <Box sx={{ display: { xs: 'flex', md: 'none' }, flexDirection: 'column', gap: 2 }}>
+              {bookings.map((b) => (
+                <Paper key={b.id} variant="outlined" sx={{ p: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+                    <Typography variant="h6">{b.slot_detail?.course || '—'}</Typography>
+                    <StatusChip status={b.status} />
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    {b.student_name} · #{b.id}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5 }}>
+                    {fmtDate(b.slot_detail?.exam_date)} · {b.slot_detail?.start_time || '—'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {b.slot_detail?.center || '—'}
+                    {b.slot_detail?.city ? `, ${b.slot_detail.city}` : ''}
+                  </Typography>
+                </Paper>
+              ))}
+            </Box>
+          </>
         )}
       </Container>
     </>

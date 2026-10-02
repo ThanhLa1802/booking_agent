@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  Alert,
   Box,
   Card,
   CardActionArea,
@@ -9,16 +10,15 @@ import {
   CircularProgress,
   Container,
   FormControl,
-  Grid,
   InputLabel,
   MenuItem,
   Select,
   Typography,
-  Alert,
 } from '@mui/material'
 import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined'
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined'
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { getSlots } from '../api'
 import useExamStore from '../stores/examStore'
 import Navbar from '../components/Navbar'
@@ -66,15 +66,32 @@ export default function CatalogPage() {
   return (
     <>
       <Navbar />
-      <Container maxWidth="lg" sx={{ py: 5, px: { xs: 2, sm: 3 } }}>
+      <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 }, px: { xs: 2, sm: 3 } }}>
         {/* Header */}
-        <Typography variant="h4" mb={1}>Danh mục kỳ thi</Typography>
-        <Typography variant="body2" color="text.secondary" mb={4}>
-          Chọn kỳ thi phù hợp và bắt đầu đặt lịch với trợ lý AI
-        </Typography>
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="overline" color="primary.main">
+            Danh mục
+          </Typography>
+          <Typography variant="h2" sx={{ mb: 1 }}>
+            Kỳ thi âm nhạc
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 560 }}>
+            Chọn kỳ thi phù hợp và bắt đầu đặt lịch với trợ lý AI.
+          </Typography>
+        </Box>
 
         {/* Filters */}
-        <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 2,
+            mb: 4,
+            pb: 3,
+            flexWrap: 'wrap',
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Loại hình</InputLabel>
             <Select
@@ -87,7 +104,7 @@ export default function CatalogPage() {
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 120 }}>
+          <FormControl size="small" sx={{ minWidth: 130 }}>
             <InputLabel>Cấp độ</InputLabel>
             <Select
               value={gradeFilter}
@@ -105,24 +122,38 @@ export default function CatalogPage() {
         {/* States */}
         {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
         {loading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-            <CircularProgress size={28} />
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+            <CircularProgress size={28} thickness={3} />
           </Box>
         )}
 
         {!loading && slots.length === 0 && (
-          <Box className="empty-state">
-            <Typography variant="body2">
+          <Box sx={{ textAlign: 'center', py: 10, color: 'text.secondary' }}>
+            <Typography variant="body1" sx={{ mb: 0.5 }}>
               Không có lịch thi nào phù hợp với bộ lọc.
+            </Typography>
+            <Typography variant="body2">
+              Hãy thử đổi loại hình hoặc cấp độ.
             </Typography>
           </Box>
         )}
 
         {/* Slot grid */}
-        <Grid container spacing={2}>
-          {slots.map((slot) => (
-            <Grid item xs={12} sm={6} md={4} key={slot.id} sx={{ display: 'flex' }}>
-              <Card sx={{ width: '100%', display: 'flex' }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, 1fr)',
+              md: 'repeat(3, 1fr)',
+            },
+            gap: 2.5,
+          }}
+        >
+          {slots.map((slot) => {
+            const scarce = slot.available_capacity <= 5
+            return (
+              <Card key={slot.id} sx={{ display: 'flex' }}>
                 <CardActionArea
                   onClick={() => handleBookSlot(slot)}
                   sx={{ height: '100%' }}
@@ -132,53 +163,32 @@ export default function CatalogPage() {
                       height: '100%',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: 1,
+                      gap: 1.25,
                       p: 2.5,
                     }}
                   >
-                    {/* Instrument + Grade */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                      <MusicNoteOutlinedIcon
-                        sx={{ color: '#A0825C', fontSize: 20, flexShrink: 0 }}
-                      />
-                      <Typography variant="h6" noWrap>
-                        {slot.instrument_name}
-                      </Typography>
-                      <Chip
-                        label={`Grade ${slot.grade}`}
-                        size="small"
-                        variant="outlined"
-                        sx={{ ml: 'auto', flexShrink: 0 }}
-                      />
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                      <MusicNoteOutlinedIcon sx={{ color: 'primary.main', fontSize: 20, mt: 0.25 }} />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="h5" noWrap>
+                          {slot.instrument_name}
+                        </Typography>
+                        <Typography variant="overline" color="text.secondary">
+                          {slot.style_display}
+                        </Typography>
+                      </Box>
+                      <Chip label={`Grade ${slot.grade}`} size="small" variant="outlined" />
                     </Box>
 
-                    {/* Style badge */}
-                    <Chip
-                      label={slot.style_display}
-                      size="small"
-                      sx={{
-                        alignSelf: 'flex-start',
-                        fontSize: '0.7rem',
-                        bgcolor: '#F0ECE6',
-                        color: '#6B5E4F',
-                      }}
-                    />
-
-                    {/* Date */}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <CalendarTodayOutlinedIcon
-                        sx={{ fontSize: 14, color: 'text.secondary', flexShrink: 0 }}
-                      />
+                      <CalendarTodayOutlinedIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
                       <Typography variant="body2" color="text.secondary" noWrap>
                         {new Date(slot.exam_date).toLocaleDateString('vi-VN')} — {slot.start_time}
                       </Typography>
                     </Box>
 
-                    {/* Location */}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <LocationOnOutlinedIcon
-                        sx={{ fontSize: 14, color: 'text.secondary', flexShrink: 0 }}
-                      />
+                      <LocationOnOutlinedIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
                       <Typography variant="body2" color="text.secondary" noWrap>
                         {slot.center_name}, {slot.center_city}
                       </Typography>
@@ -188,46 +198,34 @@ export default function CatalogPage() {
                     <Box
                       sx={{
                         mt: 'auto',
-                        pt: 1,
+                        pt: 1.5,
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
+                        borderTop: '1px solid',
+                        borderColor: 'divider',
                       }}
                     >
                       <Chip
                         size="small"
-                        label={
-                          slot.available_capacity > 5
-                            ? `Còn ${slot.available_capacity} chỗ`
-                            : `Còn ${slot.available_capacity} chỗ`
-                        }
-                        sx={{
-                          bgcolor:
-                            slot.available_capacity > 5
-                              ? 'rgba(92,138,103,0.1)'
-                              : 'rgba(196,148,80,0.1)',
-                          color:
-                            slot.available_capacity > 5
-                              ? '#5C8A67'
-                              : '#C49450',
-                          fontSize: '0.75rem',
-                          fontWeight: 500,
-                        }}
+                        label={`Còn ${slot.available_capacity} chỗ`}
+                        color={scarce ? 'warning' : 'success'}
+                        variant="outlined"
+                        sx={{ fontWeight: 500 }}
                       />
-                      <Typography
-                        variant="body2"
-                        fontWeight={600}
-                        color="#A0825C"
-                      >
-                        {Number(slot.fee).toLocaleString('vi-VN')}đ
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="body2" fontWeight={600} color="primary.main">
+                          {Number(slot.fee).toLocaleString('vi-VN')}đ
+                        </Typography>
+                        <ArrowForwardIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                      </Box>
                     </Box>
                   </CardContent>
                 </CardActionArea>
               </Card>
-            </Grid>
-          ))}
-        </Grid>
+            )
+          })}
+        </Box>
       </Container>
     </>
   )

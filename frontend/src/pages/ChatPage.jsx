@@ -21,6 +21,12 @@ import Navbar from '../components/Navbar'
 const CONFIRM_SIGNAL = 'xác nhận'
 const CANCEL_SIGNAL = 'hủy bỏ thao tác'
 
+const STARTERS = [
+  'Tra cứu chương trình Classical & Jazz',
+  'Lịch thi tháng này còn chỗ không?',
+  'Tư vấn cấp độ phù hợp cho con tôi',
+]
+
 export default function ChatPage() {
   const { accessToken } = useAuthStore()
   const {
@@ -150,50 +156,82 @@ export default function ChatPage() {
         sx={{
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100svh - 56px)',
+          height: 'calc(100svh - 60px)',
           px: { xs: 2, sm: 3 },
         }}
       >
-        {/* ── Header: staff line + title ────────────────────────── */}
-        <Box sx={{ pt: 3, pb: 2, flexShrink: 0 }}>
-          {/* Hairline rule — the single staff line */}
-          <Box
-            className={`staff-line${hasContent ? '' : ' enter'}`}
-            sx={{ mb: 2 }}
-          />
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <MusicNoteOutlinedIcon
-              sx={{
-                color: streaming ? '#A0825C' : '#C4AC84',
-                fontSize: 18,
-                transition: 'color 0.6s ease',
-              }}
-            />
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              fontWeight={400}
-              letterSpacing="-0.005em"
-            >
-              {streaming
-                ? 'Đang trả lời...'
-                : 'Trợ lý tư vấn thi Trinity'}
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <Box
+          sx={{
+            pt: 3.5,
+            pb: 2,
+            flexShrink: 0,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Typography variant="overline" color="primary.main">
+            Trợ lý AI
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mt: 0.5 }}>
+            <Typography variant="h4" sx={{ flexGrow: 1 }}>
+              Trợ lý Trinity
             </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Box
+                className={streaming ? 'ai-avatar-streaming' : ''}
+                sx={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  bgcolor: streaming ? 'primary.main' : 'success.main',
+                  transition: 'background-color 300ms ease',
+                }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {streaming ? 'Đang trả lời…' : 'Trực tuyến'}
+              </Typography>
+            </Box>
           </Box>
         </Box>
 
         {/* ── Messages ──────────────────────────────────────────── */}
-        <Box sx={{ flex: 1, overflowY: 'auto', py: 1 }}>
+        <Box sx={{ flex: 1, overflowY: 'auto', py: 3 }}>
           {!hasContent && !streaming && (
-            <Box className="empty-state" sx={{ mt: 6 }}>
-              <Typography variant="body1" color="text.secondary" mb={1}>
+            <Box sx={{ maxWidth: 520, mx: 'auto', textAlign: 'center', mt: { xs: 4, md: 8 } }}>
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  mx: 'auto',
+                  mb: 2,
+                  borderRadius: 1.5,
+                  display: 'grid',
+                  placeItems: 'center',
+                  bgcolor: 'primary.main',
+                  color: 'primary.contrastText',
+                }}
+              >
+                <MusicNoteOutlinedIcon />
+              </Box>
+              <Typography variant="h5" sx={{ mb: 1 }}>
                 Xin chào!
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Tôi có thể giúp bạn tra cứu chương trình thi,<br />
-                tư vấn cấp độ, và đặt lịch thi Trinity.
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Tôi có thể tra cứu chương trình thi, tư vấn cấp độ
+                và đặt lịch thi Trinity cho bạn.
               </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
+                {STARTERS.map((s) => (
+                  <Chip
+                    key={s}
+                    label={s}
+                    variant="outlined"
+                    onClick={() => sendMessage(s)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+              </Box>
             </Box>
           )}
 
@@ -202,36 +240,18 @@ export default function ChatPage() {
           ))}
 
           {streaming && streamingContent && (
-            <ChatBubble
-              role="assistant"
-              content={streamingContent}
-              streaming
-            />
+            <ChatBubble role="assistant" content={streamingContent} streaming />
           )}
 
-          {/* Tool call chips */}
           {streaming && activeTools.length > 0 && !streamingContent && (
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 0.5,
-                mb: 2,
-                pl: 6,
-              }}
-            >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 0.5, mb: 2, pl: 6 }}>
               {activeTools.map((tool) => (
                 <Chip
                   key={tool}
                   label={tool.replace(/_/g, ' ')}
                   size="small"
                   variant="outlined"
-                  sx={{
-                    fontSize: '0.75rem',
-                    color: 'text.secondary',
-                    borderColor: 'divider',
-                  }}
+                  sx={{ color: 'text.secondary' }}
                 />
               ))}
             </Box>
@@ -246,7 +266,7 @@ export default function ChatPage() {
         )}
 
         {/* ── Input ─────────────────────────────────────────────── */}
-        <Box className="chat-input-container" sx={{ flexShrink: 0 }}>
+        <Box sx={{ flexShrink: 0, pt: 1.5, pb: 2.5 }}>
           <Box
             component="form"
             onSubmit={handleSubmit}
@@ -255,7 +275,7 @@ export default function ChatPage() {
             <TextField
               fullWidth
               size="small"
-              placeholder="Nhập câu hỏi hoặc yêu cầu..."
+              placeholder="Nhập câu hỏi hoặc yêu cầu…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={streaming}
@@ -269,8 +289,7 @@ export default function ChatPage() {
               }}
               sx={{
                 '& .MuiOutlinedInput-root': {
-                  backgroundColor: '#F5F4F2',
-                  borderRadius: '12px',
+                  borderRadius: '10px',
                   fontSize: '0.9375rem',
                 },
               }}
@@ -281,9 +300,10 @@ export default function ChatPage() {
                       type="submit"
                       disabled={!input.trim() || streaming}
                       size="small"
+                      aria-label="Gửi"
                       sx={{
-                        color: input.trim() && !streaming ? '#A0825C' : '#CCC8C2',
-                        transition: 'color 0.2s ease',
+                        color: input.trim() && !streaming ? 'primary.main' : 'text.disabled',
+                        transition: 'color 200ms ease',
                       }}
                     >
                       <SendIcon sx={{ fontSize: 18 }} />

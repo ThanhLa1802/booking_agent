@@ -11,8 +11,8 @@ export default function ProtectedRoute({ children }) {
 
     if (isHydrating) {
         return (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-                <CircularProgress />
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100svh' }}>
+                <CircularProgress size={28} thickness={3} />
             </Box>
         )
     }

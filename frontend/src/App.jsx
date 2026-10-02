@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { CssBaseline, ThemeProvider } from '@mui/material'
-import theme from './theme'
+import { getTheme } from './theme'
+import useUiStore from './stores/uiStore'
 import useAuthStore from './stores/authStore'
 import { refreshAccessToken } from './api'
 import LoginPage from './pages/LoginPage'
@@ -32,9 +33,12 @@ function TokenRefreshGate({ children }) {
 }
 
 export default function App() {
+  const mode = useUiStore((s) => s.mode)
+  const theme = useMemo(() => getTheme(mode), [mode])
+
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline />
+      <CssBaseline enableColorScheme />
       <BrowserRouter>
         <TokenRefreshGate>
           <ScheduleTaskPoller />
