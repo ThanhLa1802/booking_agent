@@ -262,3 +262,35 @@ class TestExaminerIsAssignable:
         ok, reason = examiner.is_assignable_to_slot(slot2)
         assert ok is False
         assert "limit" in reason.lower()
+
+    def test_not_assignable_when_wrong_specialization(self):
+        center = _make_center()
+        piano = _make_instrument("Piano", "CLASSICAL_JAZZ")
+        drums = _make_instrument("Drums", "ROCK_POP")
+        course = _make_course(drums)
+        examiner = _make_examiner(center)
+        examiner.specializations.add(piano)
+        slot = _make_slot(center, course, datetime.date(2026, 6, 1), datetime.time(9, 0))
+        ok, reason = examiner.is_assignable_to_slot(slot)
+        assert ok is False
+        assert "qualified" in reason.lower()
+
+    def test_assignable_when_specialization_matches(self):
+        center = _make_center()
+        piano = _make_instrument("Piano", "CLASSICAL_JAZZ")
+        course = _make_course(piano)
+        examiner = _make_examiner(center)
+        examiner.specializations.add(piano)
+        slot = _make_slot(center, course, datetime.date(2026, 6, 1), datetime.time(9, 0))
+        ok, _ = examiner.is_assignable_to_slot(slot)
+        assert ok is True
+
+    def test_not_assignable_from_different_center(self):
+        center_a = _make_center("Center A", "Hanoi")
+        center_b = _make_center("Center B", "Ho Chi Minh")
+        course = _make_course(_make_instrument())
+        examiner = _make_examiner(center_a, email="other@test.com")
+        slot = _make_slot(center_b, course, datetime.date(2026, 6, 1), datetime.time(9, 0))
+        ok, reason = examiner.is_assignable_to_slot(slot)
+        assert ok is False
+        assert "different center" in reason.lower()

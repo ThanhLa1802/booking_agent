@@ -67,6 +67,7 @@ async def chat(
 
     async def event_stream() -> AsyncGenerator[dict, None]:
         # ── lazy imports to avoid torch/numpy crash at module load ─────────
+        from fast_api_services.agent.confirmation import is_cancel, is_confirmation
         from fast_api_services.agent.llm import get_embeddings, get_llm
         from fast_api_services.agent.memory import (
             clear_pending_proposal,
@@ -128,14 +129,12 @@ async def chat(
         chat_history = await load_history(redis, user_id)
 
         # ── pending proposal (scheduling confirmation gate) ────────────────
-        _CONFIRM_KW = {"xác nhận", "yes", "đồng ý", "confirm", "ok", "có"}
-        _CANCEL_KW = {"hủy", "no", "không", "cancel"}
-        msg_lower = request.message.strip().lower()
-        is_confirmation = any(kw in msg_lower for kw in _CONFIRM_KW)
-        is_cancel = any(kw in msg_lower for kw in _CANCEL_KW)
+        # Explicit, standalone commands only — never substring matches.
+        is_confirm_msg = is_confirmation(request.message)
+        is_cancel_msg = is_cancel(request.message)
 
         pending_proposal = await load_pending_proposal(redis, user_id)
-        if pending_proposal and is_cancel:
+        if pending_proposal and is_cancel_msg:
             await clear_pending_proposal(redis, user_id)
             pending_proposal = None
 
@@ -158,7 +157,7 @@ async def chat(
 
         from langchain_core.messages import HumanMessage
 
-        _resume = bool(pending_proposal and is_confirmation)
+        _resume = bool(pending_proposal and is_confirm_msg)
 
         # ── early "please wait" feedback for batch scheduling ──────────────
         # batch scheduling takes 15+ s (Celery task + Redis polling).

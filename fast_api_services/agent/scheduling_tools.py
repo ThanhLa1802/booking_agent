@@ -147,15 +147,81 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
             slots = await _cal(db, ctx.center_id, parsed_from, parsed_to)
 
         if not slots:
-            return "No slots found in the requested date range."
+            return "Không có ca thi nào trong khoảng thời gian này."
 
-        lines = []
+        lines = [f"📅 **Lịch thi** — {len(slots)} ca thi"]
+        current_date = None
         for s in slots:
-            examiner_str = s.examiner_name or "⚠️ No examiner assigned"
+            day = str(s.exam_date)
+            if day != current_date:
+                current_date = day
+                lines.append(f"\n**{day}**")
+                lines.append("| Giờ | Ca thi | Trung tâm | Đã đặt | Giám khảo |")
+                lines.append("|-----|--------|-----------|--------|-----------|")
+            booked = s.capacity - s.available_capacity
+            examiner_str = s.examiner_name or "⚠️ Chưa phân công"
             lines.append(
-                f"[Slot {s.id}] {s.exam_date} {s.start_time} | {s.course_name} | "
-                f"Booked: {s.capacity - s.available_capacity}/{s.capacity} | "
-                f"Examiner: {examiner_str}"
+                f"| {str(s.start_time)[:5]} | {s.course_name} | {s.center_name} "
+                f"| {booked}/{s.capacity} | {examiner_str} |"
+            )
+        return "\n".join(lines)
+
+    @tool
+    async def get_examiner_schedule(
+        examiner_id: int,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+    ) -> str:
+        """
+        View the exam schedule of ONE examiner (teacher), grouped by date.
+        Use this when the admin asks for a specific teacher's schedule/calendar.
+        Args:
+            examiner_id: The examiner ID (from list_examiners).
+            date_from: Optional start date (YYYY-MM-DD).
+            date_to:   Optional end date (YYYY-MM-DD).
+        Returns:
+            The examiner's profile and their assigned slots as a table per date.
+        """
+        from fast_api_services.services.examiner_service import (
+            get_examiner_schedule as _schedule,
+        )
+
+        parsed_from = date_type.fromisoformat(date_from) if date_from else None
+        parsed_to = date_type.fromisoformat(date_to) if date_to else None
+
+        async with ctx.session_factory() as db:
+            result = await _schedule(db, examiner_id, parsed_from, parsed_to)
+
+        if result is None:
+            return f"❌ Không tìm thấy giám khảo ID {examiner_id}."
+
+        examiner = result.examiner
+        if ctx.center_id and examiner.center_id != ctx.center_id:
+            return f"❌ Giám khảo ID {examiner_id} không thuộc trung tâm của bạn."
+
+        specs = ", ".join(examiner.specialization_names) or "—"
+        header = (
+            f"👩‍🏫 **{examiner.name}** (ID {examiner.id})\n"
+            f"Chuyên môn: {specs} · Tối đa {examiner.max_exams_per_day} ca/ngày"
+        )
+
+        slots = result.slots
+        if not slots:
+            return f"{header}\n\nKhông có ca thi nào trong khoảng thời gian này."
+
+        lines = [header, f"\n📅 **Tổng: {len(slots)} ca thi**"]
+        current_date = None
+        for s in slots:
+            day = str(s.exam_date)
+            if day != current_date:
+                current_date = day
+                lines.append(f"\n**{day}**")
+                lines.append("| Giờ | Ca thi | Trung tâm | Đã đặt |")
+                lines.append("|-----|--------|-----------|--------|")
+            booked = s.capacity - s.available_capacity
+            lines.append(
+                f"| {str(s.start_time)[:5]} | {s.course_name} | {s.center_name} "
+                f"| {booked}/{s.capacity} |"
             )
         return "\n".join(lines)
 
@@ -298,8 +364,8 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
         if plan_data is None:
             return (
                 f"[TASK_ID:{task_id}]\n"
-                "⏳ Hệ thống đang tính toán lịch. "
-                "Gõ 'kiểm tra lịch' sau ít phút để xem kết quả."
+                "⏳ Hệ thống vẫn đang tính toán lịch. "
+                "Vui lòng gửi lại yêu cầu xếp lịch sau ít phút."
             )
 
         if plan_data.get("status") == "FAILURE":
@@ -311,6 +377,30 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
         # 3. Format preview
         plan = plan_data.get("plan", [])
         unassigned = plan_data.get("unassigned", [])
+        already_assigned = plan_data.get("already_assigned", 0)
+
+        # Nothing to commit → never emit a TASK_ID (so the agent won't ask for
+        # confirmation); just explain the state clearly.
+        if not plan:
+            if unassigned:
+                lines = [
+                    f"⚠️ **Không xếp được giám khảo cho {len(unassigned)} ca thi** "
+                    f"trong {date_from} → {date_to}:"
+                ]
+                lines.append("| Ngày | Giờ | Môn thi | Lý do |")
+                lines.append("|------|-----|---------|-------|")
+                for item in unassigned:
+                    lines.append(
+                        f"| {item['exam_date']} | {item['start_time']} "
+                        f"| {item['course_name']} | {item.get('reason', '—')} |"
+                    )
+                return "\n".join(lines)
+            if already_assigned:
+                return (
+                    f"✅ Tất cả **{already_assigned} ca thi** trong "
+                    f"{date_from} → {date_to} đã có giám khảo. Không cần xếp thêm."
+                )
+            return f"ℹ️ Không có ca thi nào cần xếp trong {date_from} → {date_to}."
 
         lines = [f"[TASK_ID:{task_id}]"]
         lines.append(f"📋 **Kế hoạch xếp lịch {date_from} → {date_to}**")
@@ -319,14 +409,13 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
             f"⚠️ Chưa xếp: **{len(unassigned)} slot**\n"
         )
 
-        if plan:
-            lines.append("| Ngày | Giờ | Môn thi | Giám khảo |")
-            lines.append("|------|-----|---------|-----------|")
-            for item in plan:
-                lines.append(
-                    f"| {item['exam_date']} | {item['start_time']} "
-                    f"| {item['course_name']} | {item['examiner_name']} |"
-                )
+        lines.append("| Ngày | Giờ | Môn thi | Giám khảo |")
+        lines.append("|------|-----|---------|-----------|")
+        for item in plan:
+            lines.append(
+                f"| {item['exam_date']} | {item['start_time']} "
+                f"| {item['course_name']} | {item['examiner_name']} |"
+            )
 
         if unassigned:
             lines.append("\n⚠️ **Slot chưa xếp được giám khảo:**")
@@ -373,6 +462,7 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
         suggest_examiners_for_slot,
         search_available_slots,
         get_exam_calendar,
+        get_examiner_schedule,
         assign_examiner_to_slot,
         auto_plan_schedule,
         confirm_schedule_plan,

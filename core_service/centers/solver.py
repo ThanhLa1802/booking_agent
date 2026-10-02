@@ -54,7 +54,8 @@ def solve(slots: list[SlotData], examiners: list[ExaminerData]) -> list[dict]:
 
     Constraints:
       - Each slot gets at most one examiner (exactly one when feasible).
-      - Examiner must hold the required instrument specialization.
+      - Examiner must hold the required instrument specialization
+        (an empty specialization set means "generalist" — any instrument).
       - Examiner must not be on leave on the slot date.
       - Examiner cannot exceed ``max_exams_per_day`` (existing + new).
       - Two slots at the same (date, time) cannot share the same examiner.
@@ -80,8 +81,9 @@ def solve(slots: list[SlotData], examiners: list[ExaminerData]) -> list[dict]:
     n_examiners = len(examiners)
 
     def _eligible(s: SlotData, e: ExaminerData) -> bool:
+        # Empty specialization set = generalist (eligible for any instrument).
         return (
-            s.instrument_id in e.specialization_ids
+            (not e.specialization_ids or s.instrument_id in e.specialization_ids)
             and s.exam_date not in e.unavailable_dates
         )
 

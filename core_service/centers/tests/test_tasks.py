@@ -92,6 +92,8 @@ def test_task_no_slots_returns_empty_plan(
 ):
     """When there are no unassigned slots, task stores empty plan."""
     mock_ExamSlot.objects.filter.return_value.select_related.return_value.order_by.return_value = []
+    # already-assigned count query
+    mock_ExamSlot.objects.filter.return_value.count.return_value = 0
     rc = MagicMock()
     mock_get_redis.return_value = rc
 
@@ -104,6 +106,30 @@ def test_task_no_slots_returns_empty_plan(
     assert last_payload["status"] == "SUCCESS"
     assert last_payload["plan"] == []
     assert last_payload["unassigned"] == []
+    assert last_payload["already_assigned"] == 0
+
+
+@patch("centers.tasks._get_redis")
+@patch("centers.tasks.ExamSlot")
+@patch("centers.tasks.Examiner")
+def test_task_no_unassigned_reports_already_assigned(
+    mock_Examiner, mock_ExamSlot, mock_get_redis
+):
+    """No unassigned slots but some already covered → already_assigned count."""
+    mock_ExamSlot.objects.filter.return_value.select_related.return_value.order_by.return_value = []
+    mock_ExamSlot.objects.filter.return_value.count.return_value = 42
+    rc = MagicMock()
+    mock_get_redis.return_value = rc
+
+    from centers.tasks import solve_schedule_plan
+    solve_schedule_plan.run(
+        center_id=1, date_from="2026-11-01", date_to="2026-11-30", user_id=42
+    )
+
+    last_payload = json.loads(rc.setex.call_args_list[-1][0][2])
+    assert last_payload["status"] == "SUCCESS"
+    assert last_payload["plan"] == []
+    assert last_payload["already_assigned"] == 42
 
 
 @patch("centers.tasks._get_redis")

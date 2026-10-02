@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fast_api_services.schemas.models import (
     ExaminerAvailabilityOut,
     ExaminerOut,
+    ExaminerScheduleOut,
     ExamSlotScheduleOut,
 )
 
@@ -239,10 +240,13 @@ async def get_exam_calendar(
     center_id: Optional[int] = None,
     date_from: Optional[date_type] = None,
     date_to: Optional[date_type] = None,
+    examiner_id: Optional[int] = None,
 ) -> list[ExamSlotScheduleOut]:
     """
     Return all slots for a center (including full) with examiner info,
     for the calendar view. When center_id is None, returns slots for all centers.
+    When examiner_id is given, only slots assigned to that examiner are returned
+    (sorted by date/time) — this powers the per-teacher schedule view.
     """
     query = """
         SELECT
@@ -273,6 +277,9 @@ async def get_exam_calendar(
     if center_id:  # 0 or None → no filter (show all centers)
         query += " AND s.center_id = :center_id"
         params["center_id"] = center_id
+    if examiner_id is not None:
+        query += " AND s.examiner_id = :examiner_id"
+        params["examiner_id"] = examiner_id
     if date_from:
         query += " AND s.exam_date >= :date_from"
         params["date_from"] = date_from
@@ -304,3 +311,60 @@ async def get_exam_calendar(
         )
         for r in rows
     ]
+
+
+async def get_examiner_by_id(
+    db: AsyncSession,
+    examiner_id: int,
+) -> Optional[ExaminerOut]:
+    """Return a single examiner by id, or None if it does not exist."""
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT
+                    e.id,
+                    e.center_id,
+                    ec.name  AS center_name,
+                    ec.city  AS center_city,
+                    e.name,
+                    e.email,
+                    e.phone,
+                    e.max_exams_per_day,
+                    e.is_active,
+                    STRING_AGG(CONCAT(i.name, ' (', i.style, ')'), ', ') AS specialization_names
+                FROM centers_examiner e
+                JOIN centers_examcenter ec ON ec.id = e.center_id
+                LEFT JOIN centers_examiner_specializations es ON es.examiner_id = e.id
+                LEFT JOIN catalog_instrument i ON i.id = es.instrument_id
+                WHERE e.id = :eid
+                GROUP BY e.id, ec.name, ec.city
+                """
+            ),
+            {"eid": examiner_id},
+        )
+    ).mappings().first()
+    return _row_to_examiner(row) if row else None
+
+
+async def get_examiner_schedule(
+    db: AsyncSession,
+    examiner_id: int,
+    date_from: Optional[date_type] = None,
+    date_to: Optional[date_type] = None,
+) -> Optional[ExaminerScheduleOut]:
+    """
+    Return one examiner's assigned slots (optionally within a date range),
+    grouped by the caller. None if the examiner does not exist.
+    """
+    examiner = await get_examiner_by_id(db, examiner_id)
+    if examiner is None:
+        return None
+    slots = await get_exam_calendar(
+        db,
+        center_id=examiner.center_id,
+        date_from=date_from,
+        date_to=date_to,
+        examiner_id=examiner_id,
+    )
+    return ExaminerScheduleOut(examiner=examiner, slots=slots)

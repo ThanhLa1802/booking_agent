@@ -132,6 +132,12 @@ class ExamSlotScheduleOut(ExamSlotOut):
     examiner_name: Optional[str] = None
 
 
+class ExaminerScheduleOut(BaseModel):
+    """One examiner plus the slots assigned to them."""
+    examiner: ExaminerOut
+    slots: list[ExamSlotScheduleOut]
+
+
 # ── Scheduling — Reschedule ───────────────────────────────────────────────────
 
 class RescheduleBookingIn(BaseModel):

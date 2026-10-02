@@ -107,11 +107,14 @@ async def get_calendar_endpoint(
     center_id: Optional[int] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
+    examiner_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: object = Depends(_require_center_admin),
 ):
-    """Return the exam calendar for a center."""
-    return await get_exam_calendar(db, center_id, date_from, date_to)
+    """Return the exam calendar for a center (optionally for one examiner)."""
+    return await get_exam_calendar(
+        db, center_id, date_from, date_to, examiner_id=examiner_id
+    )
 
 
 # ── write endpoints (proxied to Django) ──────────────────────────────────────

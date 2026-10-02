@@ -87,6 +87,19 @@ def solve_schedule_plan(
         slots_list = list(slots_qs)
 
         if not slots_list:
+            # No unassigned slots — tell the caller how many are already covered
+            # so it can distinguish "all done" from "nothing in range".
+            already_assigned = (
+                ExamSlot.objects
+                .filter(
+                    center_id=center_id,
+                    is_active=True,
+                    examiner__isnull=False,
+                    exam_date__gte=date_from,
+                    exam_date__lte=date_to,
+                )
+                .count()
+            )
             _store(rc, redis_key, {
                 "status": "SUCCESS",
                 "task_id": task_id,
@@ -96,6 +109,7 @@ def solve_schedule_plan(
                 "date_to": date_to,
                 "plan": [],
                 "unassigned": [],
+                "already_assigned": already_assigned,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
             return

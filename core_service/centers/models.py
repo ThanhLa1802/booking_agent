@@ -79,6 +79,16 @@ class Examiner(models.Model):
         """
         if not self.is_active:
             return False, "Examiner is inactive."
+        if self.center_id != slot.center_id:
+            return False, "Examiner belongs to a different center."
+        # Empty specializations means "generalist" (any instrument); otherwise
+        # the examiner must be qualified for the slot's instrument.
+        specialization_ids = set(self.specializations.values_list("id", flat=True))
+        if specialization_ids and slot.course.instrument_id not in specialization_ids:
+            return (
+                False,
+                f"Examiner is not qualified for {slot.course.instrument.name}.",
+            )
         if self.is_unavailable_on(slot.exam_date):
             return False, f"Examiner is unavailable on {slot.exam_date}."
         if not self.has_capacity_on(slot.exam_date):

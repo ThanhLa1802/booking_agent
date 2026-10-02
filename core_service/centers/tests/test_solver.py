@@ -151,3 +151,14 @@ def test_multi_day_load_cap():
     day2 = [a for a in plan if slots[[s.id for s in slots].index(a["slot_id"])].exam_date == "2026-06-02"]
     assert len(day1) <= 2
     assert len(day2) <= 2
+
+
+# ── 9. generalist (no specialization) ─────────────────────────────────────────
+
+def test_generalist_examiner_covers_any_instrument():
+    """Empty specialization set means generalist → eligible for any instrument."""
+    slots = [_slot(1, instrument_id=99)]
+    examiners = [_examiner(10, specs=())]
+    plan = solve(slots, examiners)
+    assert len(plan) == 1
+    assert plan[0]["examiner_id"] == 10

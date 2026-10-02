@@ -47,7 +47,8 @@ services:
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py collectstatic --noinput &&
-             python manage.py loaddata fixtures/initial_catalog.json fixtures/initial_centers.json || true ;
+             (python manage.py shell -c 'from centers.models import ExamCenter; import sys; sys.exit(0 if ExamCenter.objects.exists() else 1)' ||
+              python manage.py loaddata fixtures/initial_catalog.json fixtures/initial_centers.json) ;
              gunicorn core_service.wsgi:application --bind 0.0.0.0:8000 --workers 4"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/ || exit 1"]

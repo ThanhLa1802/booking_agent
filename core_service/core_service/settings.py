@@ -147,4 +147,8 @@ CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/1")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/2")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
+# Publish to the "default" queue so it matches the worker's `-Q default`.
+# Without this, Celery publishes to the queue named "celery" while the worker
+# (and the docs' run commands) listen on "default" — tasks would never run.
+CELERY_TASK_DEFAULT_QUEUE = "default"
 CELERY_TIMEZONE = TIME_ZONE

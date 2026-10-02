@@ -2,17 +2,19 @@
 SchedulingGraph — LangGraph StateGraph for CENTER_ADMIN exam scheduling.
 
 Graph topology:
-    START → classify_node → fetch_node → propose_node
-                                              │
-                              ┌───────────────┴───────────────┐
-                         (view_calendar      (assign / reschedule / batch_assign)
-                          or general)                    ↓
-                              │                    confirm_node ──(yes)──→ execute_node → END
-                              └────────────────────────(no)─→ END (agent asks user)
+    START ──(resume? proposal+confirmed)──────────────→ execute_node → END
+          │
+          └─→ classify_node → fetch_node → propose_node → END
+
+    * propose_node always ends the turn. For write ops it sets
+      proposal + confirmed=False; the agent router persists that proposal
+      (Redis) and, on the next turn, injects it with confirmed=True so
+      START routes straight to execute_node. Read ops (view_calendar /
+      general) set confirmed=True and end immediately.
 
 batch_assign flow:
     fetch_node calls auto_plan_schedule (fires Celery + polls Redis)
-    propose_node shows plan preview table → admin confirms
+    propose_node shows plan preview table → admin confirms in a later turn
     execute_node calls confirm_schedule_plan (writes to DB)
 """
 from __future__ import annotations
@@ -21,6 +23,7 @@ import calendar as _calendar
 import logging
 import re as _re
 from datetime import date as _date
+from datetime import timedelta as _timedelta
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
@@ -33,6 +36,18 @@ def _extract_date_range(text: str):
     """Extract (date_from, date_to) strings from Vietnamese natural language."""
     today = _date.today()
     year = today.year
+    lower = text.lower()
+
+    # Relative weeks: "tuần này" (current), "tuần sau/tới" (next), "tuần trước/rồi" (last)
+    if "tuần" in lower or "tuan" in lower:
+        monday = today - _timedelta(days=today.weekday())
+        if "sau" in lower or "tới" in lower or "toi" in lower:
+            monday += _timedelta(days=7)
+        elif "trước" in lower or "truoc" in lower or "rồi" in lower:
+            monday -= _timedelta(days=7)
+        sunday = monday + _timedelta(days=6)
+        return monday.isoformat(), sunday.isoformat()
+
     m = _re.search(r"tháng\s*(\d{1,2})(?:\s*(?:năm\s*)?(\d{4}))?", text, _re.I)
     if m:
         month = int(m.group(1))
@@ -47,10 +62,10 @@ def _extract_date_range(text: str):
 
 
 def _extract_examiner_id(text: str) -> int | None:
-    """Extract examiner ID from Vietnamese text like 'giám khảo ID 2' or 'examiner 2'."""
+    """Extract examiner ID from Vietnamese text like 'giám khảo ID 2' or 'giáo viên 2'."""
     patterns = [
-        r"(?:giám\s*khảo|examiner|gk)\s+(?:ID\s*)?(\d+)",
-        r"ID\s*(\d+)\s*(?:giám\s*khảo|examiner)",
+        r"(?:giám\s*khảo|giáo\s*viên|giao\s*vien|examiner|teacher|gk|gv)\s+(?:ID\s*)?(\d+)",
+        r"ID\s*(\d+)\s*(?:giám\s*khảo|giáo\s*viên|giao\s*vien|examiner|teacher)",
     ]
     for pattern in patterns:
         m = _re.search(pattern, text, _re.I)
@@ -65,6 +80,12 @@ def _extract_slot_id(text: str) -> int | None:
     if m:
         return int(m.group(1))
     return None
+
+
+def _default_range_forward() -> tuple[str, str]:
+    """Default read window when the admin gives no date: today → +60 days."""
+    today = _date.today()
+    return today.isoformat(), (today + _timedelta(days=60)).isoformat()
 
 
 # ── node: classify ────────────────────────────────────────────────────────────
@@ -89,17 +110,26 @@ def _make_classify_node(llm):
         classification_prompt = SystemMessage(
             content=(
                 "Classify the following CENTER_ADMIN message into exactly one of these task types:\n"
-                "  assign_examiner  — assigning or changing which examiner covers a single slot\n"
-                "  view_calendar    — viewing the exam schedule or calendar\n"
-                "  reschedule       — rescheduling a student\'s booking to a new slot\n"
-                "  batch_assign     — auto-schedule / assign examiners for a full week or month\n"
-                "  general          — anything else (questions, greetings, etc.)\n\n"
+                "  assign_examiner       — assigning or changing which examiner covers a single slot\n"
+                "  view_calendar         — viewing the exam schedule or calendar of the center\n"
+                "  view_examiner_schedule — viewing the schedule/exams of a SPECIFIC examiner "
+                "(keywords: giáo viên, giám khảo, examiner, teacher, 'lịch của ...')\n"
+                "  reschedule            — rescheduling a student\'s booking to a new slot\n"
+                "  batch_assign          — auto-schedule / assign examiners for a full week or month\n"
+                "  general               — anything else (questions, greetings, etc.)\n\n"
                 "Respond with ONLY the task_type string, nothing else."
             )
         )
         response = await llm.ainvoke([classification_prompt, last_human])
         task_type = response.content.strip().lower()
-        if task_type not in ("assign_examiner", "view_calendar", "reschedule", "batch_assign", "general"):
+        if task_type not in (
+            "assign_examiner",
+            "view_calendar",
+            "view_examiner_schedule",
+            "reschedule",
+            "batch_assign",
+            "general",
+        ):
             task_type = "general"
         # Preserve proposal/confirmed from previous turn if they exist
         return {
@@ -132,15 +162,39 @@ def _make_fetch_node(tools: list):
         slot_id = _extract_slot_id(user_msg)
 
         if task_type == "view_calendar":
-            # Show calendar for requested date range
+            # Show calendar for requested date range (default: upcoming 60 days)
             tool = tool_map.get("get_exam_calendar")
             if tool:
+                if not date_from and not date_to:
+                    date_from, date_to = _default_range_forward()
                 cal_args: dict = {}
                 if date_from:
                     cal_args["date_from"] = date_from
                 if date_to:
                     cal_args["date_to"] = date_to
                 fetched_text = await tool.ainvoke(cal_args)
+
+        elif task_type == "view_examiner_schedule":
+            # A specific examiner's schedule. Without an ID, list examiners to pick from.
+            if examiner_id is None:
+                tool = tool_map.get("list_examiners")
+                if tool:
+                    listing = await tool.ainvoke({})
+                    fetched_text = (
+                        "Bạn muốn xem lịch của giám khảo nào? "
+                        "Vui lòng cho ID:\n" + listing
+                    )
+            else:
+                tool = tool_map.get("get_examiner_schedule")
+                if tool:
+                    if not date_from and not date_to:
+                        date_from, date_to = _default_range_forward()
+                    sched_args: dict = {"examiner_id": examiner_id}
+                    if date_from:
+                        sched_args["date_from"] = date_from
+                    if date_to:
+                        sched_args["date_to"] = date_to
+                    fetched_text = await tool.ainvoke(sched_args)
 
         elif task_type == "assign_examiner":
             # Search slots by date + examiner if both provided
@@ -229,8 +283,8 @@ def _make_propose_node(llm, tools: list):
     async def propose_node(state: SchedulingState) -> dict:
         task_type = state.get("task_type", "general")
 
-        # For view_calendar: present fetched data verbatim; use LLM only for fallback/general
-        if task_type in ("view_calendar", "general"):
+        # For read-only views: present fetched data verbatim; use LLM only for fallback/general
+        if task_type in ("view_calendar", "view_examiner_schedule", "general"):
             # Extract [FETCH] content directly — avoid LLM reformatting real data
             fetch_messages = [
                 m for m in state["messages"]
@@ -352,48 +406,6 @@ def _make_propose_node(llm, tools: list):
     return propose_node
 
 
-# ── node: confirm ─────────────────────────────────────────────────────────────
-
-_CONFIRM_KEYWORDS = {"xác nhận", "yes", "đồng ý", "confirm", "ok", "có"}
-
-
-async def confirm_node(state: SchedulingState) -> dict:
-    """
-    Check the latest human message for an explicit confirmation.
-    If confirmed → set confirmed=True.
-    If rejected (hủy / no / không) → clear proposal.
-    Otherwise → ask again (interrupt).
-    """
-    last_human = next(
-        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
-        None,
-    )
-    if not last_human:
-        return {}
-
-    text = str(last_human.content).strip().lower()
-
-    if any(kw in text for kw in _CONFIRM_KEYWORDS):
-        return {"confirmed": True}
-
-    if any(kw in text for kw in {"hủy", "no", "không", "cancel"}):
-        return {
-            "messages": [AIMessage(content="❌ Hành động đã bị hủy.")],
-            "proposal": None,
-            "confirmed": False,
-        }
-
-    # Not a clear answer — ask again
-    return {
-        "messages": [
-            AIMessage(
-                content="Vui lòng trả lời 'xác nhận' để tiếp tục hoặc 'hủy' để hủy bỏ."
-            )
-        ],
-        "confirmed": False,
-    }
-
-
 # ── node: execute ─────────────────────────────────────────────────────────────
 
 def _make_execute_node(tools: list):
@@ -498,17 +510,7 @@ def _route_after_propose(state: SchedulingState) -> str:
     - Write ops: end the turn so the admin can review the proposal.
       The NEXT turn is handled by the agent router's _resume mechanism,
       which injects the stored proposal and routes directly to execute_node.
-
-    confirm_node is intentionally bypassed in single-turn flows to prevent it
-    from overwriting the proposal display with a generic "please confirm" message.
     """
-    return "__end__"
-
-
-def _route_after_confirm(state: SchedulingState) -> str:
-    """After confirm_node: if confirmed execute; else stay/end."""
-    if state.get("confirmed", False):
-        return "execute_node"
     return "__end__"
 
 
@@ -530,14 +532,12 @@ def create_scheduling_graph(tools: list, llm, checkpointer=None):
     builder.add_node("classify_node", _make_classify_node(llm))
     builder.add_node("fetch_node", _make_fetch_node(tools))
     builder.add_node("propose_node", _make_propose_node(llm, tools))
-    builder.add_node("confirm_node", confirm_node)
     builder.add_node("execute_node", _make_execute_node(tools))
 
     builder.add_conditional_edges(START, _route_from_start, {"classify_node": "classify_node", "execute_node": "execute_node"})
     builder.add_edge("classify_node", "fetch_node")
     builder.add_edge("fetch_node", "propose_node")
     builder.add_conditional_edges("propose_node", _route_after_propose)
-    builder.add_conditional_edges("confirm_node", _route_after_confirm)
     builder.add_edge("execute_node", END)
 
     return builder.compile(checkpointer=checkpointer)

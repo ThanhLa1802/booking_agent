@@ -226,8 +226,76 @@ async def test_get_exam_calendar_no_examiner(sched_ctx):
     ):
         result = await cal_tool.ainvoke({})
 
-    assert "⚠️ No examiner assigned" in result
+    assert "Chưa phân công" in result
     assert "Piano Grade 3" in result
+
+
+# ── 7b. get_examiner_schedule ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_examiner_schedule_groups_by_date(sched_ctx):
+    tools = make_scheduling_tools(sched_ctx)
+    sched_tool = next(t for t in tools if t.name == "get_examiner_schedule")
+
+    examiner = MagicMock(
+        id=3,
+        name="Le Thi D",
+        center_id=1,
+        specialization_names=["Piano"],
+        max_exams_per_day=8,
+    )
+    slot1 = MagicMock(
+        exam_date="2026-06-01",
+        start_time="09:00:00",
+        course_name="Piano G1",
+        center_name="Hanoi Center",
+        capacity=5,
+        available_capacity=3,
+    )
+    slot2 = MagicMock(
+        exam_date="2026-06-02",
+        start_time="10:30:00",
+        course_name="Piano G2",
+        center_name="Hanoi Center",
+        capacity=4,
+        available_capacity=4,
+    )
+    result = MagicMock(examiner=examiner, slots=[slot1, slot2])
+
+    with patch(
+        "fast_api_services.services.examiner_service.get_examiner_schedule",
+        AsyncMock(return_value=result),
+    ):
+        out = await sched_tool.ainvoke({"examiner_id": 3})
+
+    assert "Le Thi D" in out
+    assert "2026-06-01" in out
+    assert "2026-06-02" in out
+    assert "Piano G1" in out
+    assert "|" in out
+
+
+@pytest.mark.asyncio
+async def test_get_examiner_schedule_rejects_other_center(sched_ctx):
+    tools = make_scheduling_tools(sched_ctx)
+    sched_tool = next(t for t in tools if t.name == "get_examiner_schedule")
+
+    examiner = MagicMock(
+        id=3,
+        name="Le Thi D",
+        center_id=999,  # different from ctx.center_id == 1
+        specialization_names=[],
+        max_exams_per_day=8,
+    )
+    result = MagicMock(examiner=examiner, slots=[])
+
+    with patch(
+        "fast_api_services.services.examiner_service.get_examiner_schedule",
+        AsyncMock(return_value=result),
+    ):
+        out = await sched_tool.ainvoke({"examiner_id": 3})
+
+    assert "không thuộc trung tâm" in out
 
 
 # ── 8. suggest_slots_for_reschedule ─────────────────────────────────────────
@@ -321,6 +389,85 @@ async def test_auto_plan_schedule_returns_plan(sched_ctx):
     assert f"[TASK_ID:{task_id}]" in result
     assert "Nguyen Van A" in result
     assert "Piano Grade 3" in result
+
+
+@pytest.mark.asyncio
+async def test_auto_plan_schedule_all_already_assigned(sched_ctx):
+    """Empty plan + already_assigned → explain, and emit NO [TASK_ID] (no confirm)."""
+    import json as _json
+
+    tools = make_scheduling_tools(sched_ctx)
+    plan_tool = next(t for t in tools if t.name == "auto_plan_schedule")
+
+    payload = {
+        "status": "SUCCESS",
+        "plan": [],
+        "unassigned": [],
+        "already_assigned": 42,
+    }
+    mock_dispatch_resp = MagicMock()
+    mock_dispatch_resp.status_code = 202
+    mock_dispatch_resp.json.return_value = {"task_id": "abc-123"}
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=_json.dumps(payload).encode())
+
+    with patch("httpx.AsyncClient") as mock_client_cls, \
+         patch("fast_api_services.agent.scheduling_tools.asyncio.sleep", AsyncMock()), \
+         patch(
+             "fast_api_services.agent.scheduling_tools._get_redis_in_tool",
+             return_value=mock_redis,
+         ):
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_dispatch_resp)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await plan_tool.ainvoke(
+            {"date_from": "2026-11-01", "date_to": "2026-11-30"}
+        )
+
+    assert "đã có giám khảo" in result
+    assert "42" in result
+    assert "[TASK_ID:" not in result
+
+
+@pytest.mark.asyncio
+async def test_auto_plan_schedule_nothing_in_range(sched_ctx):
+    """Empty plan, empty unassigned, no already_assigned → info, no [TASK_ID]."""
+    import json as _json
+
+    tools = make_scheduling_tools(sched_ctx)
+    plan_tool = next(t for t in tools if t.name == "auto_plan_schedule")
+
+    payload = {
+        "status": "SUCCESS",
+        "plan": [],
+        "unassigned": [],
+        "already_assigned": 0,
+    }
+    mock_dispatch_resp = MagicMock()
+    mock_dispatch_resp.status_code = 202
+    mock_dispatch_resp.json.return_value = {"task_id": "abc-123"}
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=_json.dumps(payload).encode())
+
+    with patch("httpx.AsyncClient") as mock_client_cls, \
+         patch("fast_api_services.agent.scheduling_tools.asyncio.sleep", AsyncMock()), \
+         patch(
+             "fast_api_services.agent.scheduling_tools._get_redis_in_tool",
+             return_value=mock_redis,
+         ):
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_dispatch_resp)
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await plan_tool.ainvoke(
+            {"date_from": "2026-11-01", "date_to": "2026-11-30"}
+        )
+
+    assert "Không có ca thi nào cần xếp" in result
+    assert "[TASK_ID:" not in result
 
 
 @pytest.mark.asyncio

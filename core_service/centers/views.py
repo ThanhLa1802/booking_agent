@@ -148,7 +148,9 @@ class AssignExaminerView(APIView):
             )
 
         try:
-            slot = ExamSlot.objects.select_related("center").get(pk=slot_id)
+            slot = ExamSlot.objects.select_related(
+                "center", "course__instrument"
+            ).get(pk=slot_id)
         except ExamSlot.DoesNotExist:
             return Response({"detail": "Slot not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -316,26 +318,82 @@ class BatchScheduleConfirmView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        # The task must belong to the admin's own center.
+        try:
+            center = request.user.managed_center
+        except ExamCenter.DoesNotExist:
+            return Response(
+                {"detail": "Your account is not linked to any exam center."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if plan_data.get("center_id") != center.pk:
+            return Response(
+                {"detail": "This schedule task does not belong to your center."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         plan = plan_data.get("plan", [])
         if not plan:
-            return Response({"assigned_count": 0}, status=status.HTTP_200_OK)
+            return Response(
+                {"assigned_count": 0, "skipped": []}, status=status.HTTP_200_OK
+            )
 
-        # Bulk-assign inside a single transaction
+        # Re-validate every assignment at commit time: the plan may be up to
+        # 2 hours old, so leave / capacity / specialization / center can have
+        # changed since it was computed.
         assigned_count = 0
+        skipped: list[dict] = []
         with transaction.atomic():
             for item in plan:
-                updated = ExamSlot.objects.filter(
-                    pk=item["slot_id"],
-                    examiner__isnull=True,   # skip if already assigned
-                ).update(examiner_id=item["examiner_id"])
-                assigned_count += updated
+                slot = (
+                    ExamSlot.objects
+                    .select_for_update()
+                    .select_related("course__instrument")
+                    .filter(pk=item.get("slot_id"))
+                    .first()
+                )
+                if slot is None:
+                    skipped.append(
+                        {"slot_id": item.get("slot_id"), "reason": "Slot not found."}
+                    )
+                    continue
+                if slot.center_id != center.pk:
+                    skipped.append(
+                        {"slot_id": slot.pk, "reason": "Slot belongs to another center."}
+                    )
+                    continue
+                if slot.examiner_id is not None:
+                    skipped.append(
+                        {"slot_id": slot.pk, "reason": "Slot already assigned."}
+                    )
+                    continue
+
+                examiner = Examiner.objects.filter(pk=item.get("examiner_id")).first()
+                if examiner is None:
+                    skipped.append(
+                        {"slot_id": slot.pk, "reason": "Examiner not found."}
+                    )
+                    continue
+
+                ok, reason = examiner.is_assignable_to_slot(slot)
+                if not ok:
+                    skipped.append({"slot_id": slot.pk, "reason": reason})
+                    continue
+
+                slot.examiner = examiner
+                slot.save(update_fields=["examiner"])
+                assigned_count += 1
 
         # Update Redis record to COMMITTED
         from datetime import datetime
         from datetime import timezone as _tz
         plan_data["status"] = "COMMITTED"
         plan_data["assigned_count"] = assigned_count
+        plan_data["skipped"] = skipped
         plan_data["committed_at"] = datetime.now(_tz.utc).isoformat()
         rc.setex(f"schedule_task:{task_id}", 7_200, json.dumps(plan_data))
 
-        return Response({"assigned_count": assigned_count}, status=status.HTTP_200_OK)
+        return Response(
+            {"assigned_count": assigned_count, "skipped": skipped},
+            status=status.HTTP_200_OK,
+        )
