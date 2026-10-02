@@ -3,7 +3,7 @@ import { create } from 'zustand'
 /**
  * chatStore — conversation history + SSE streaming state
  */
-const useChatStore = create((set, get) => ({
+const useChatStore = create((set) => ({
     messages: [],          // [{ role: 'user'|'assistant', content: string, toolCalls?: [] }]
     streaming: false,      // true while SSE is open
     streamingContent: '',  // partial assistant message being built

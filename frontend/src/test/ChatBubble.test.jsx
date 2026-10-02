@@ -15,11 +15,11 @@ describe('ChatBubble', () => {
         expect(screen.getByText('Bold text').tagName).toBe('STRONG')
     })
 
-    it('shows spinner when streaming=true', () => {
-        const { container } = render(
+    it('renders content while streaming', () => {
+        render(
             <ChatBubble role="assistant" content="typing..." streaming={true} />
         )
-        // MUI CircularProgress renders an svg role="progressbar"
-        expect(container.querySelector('[role="progressbar"]') || container.querySelector('svg')).toBeTruthy()
+        // Content is rendered while streaming (alongside a blinking cursor)
+        expect(screen.getByText('typing...')).toBeInTheDocument()
     })
 })

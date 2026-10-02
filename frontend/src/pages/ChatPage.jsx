@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-    Box,
-    Chip,
-    Container,
-    IconButton,
-    InputAdornment,
-    Paper,
-    TextField,
-    Typography,
+  Box,
+  Chip,
+  Container,
+  IconButton,
+  InputAdornment,
+  TextField,
+  Typography,
 } from '@mui/material'
 import SendIcon from '@mui/icons-material/Send'
-import SettingsIcon from '@mui/icons-material/Settings'
+import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined'
 import useAuthStore from '../stores/authStore'
 import useChatStore from '../stores/chatStore'
 import useExamStore from '../stores/examStore'
@@ -23,208 +22,279 @@ const CONFIRM_SIGNAL = 'xác nhận'
 const CANCEL_SIGNAL = 'hủy bỏ thao tác'
 
 export default function ChatPage() {
-    const { accessToken } = useAuthStore()
-    const {
-        messages, streaming, streamingContent, activeTools, pendingConfirm, sessionId,
-        addUserMessage, startStreaming, appendToken, addToolCall, removeToolCall,
-        finishStreaming, setError, setSessionId, clearPendingConfirm, setStreamingContent,
-    } = useChatStore()
-    const { selectedSlot, reset: resetExam } = useExamStore()
+  const { accessToken } = useAuthStore()
+  const {
+    messages, streaming, streamingContent, activeTools, pendingConfirm, sessionId,
+    addUserMessage, startStreaming, appendToken, addToolCall, removeToolCall,
+    finishStreaming, setError, setSessionId, clearPendingConfirm, setStreamingContent,
+  } = useChatStore()
+  const { selectedSlot, reset: resetExam } = useExamStore()
 
-    const [input, setInput] = useState('')
-    const bottomRef = useRef(null)
-    const abortRef = useRef(null)
+  const [input, setInput] = useState('')
+  const bottomRef = useRef(null)
+  const abortRef = useRef(null)
 
-    // Auto-scroll
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [messages, streamingContent])
+  // Auto-scroll
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, streamingContent])
 
-    // Pre-fill message if a slot was selected in catalog
-    useEffect(() => {
-        if (selectedSlot) {
-            setInput(
-                `Tôi muốn đặt lịch thi slot ${selectedSlot.id} — ${selectedSlot.instrument_name} Grade ${selectedSlot.grade} vào ngày ${new Date(selectedSlot.exam_date).toLocaleDateString('vi-VN')}`
-            )
+  // Pre-fill if slot was selected from catalog. Syncing an external store
+  // selection into the editable draft is intentional here.
+  useEffect(() => {
+    if (selectedSlot) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInput(
+        `Tôi muốn đặt lịch thi slot ${selectedSlot.id} — ${selectedSlot.instrument_name} Grade ${selectedSlot.grade} vào ngày ${new Date(selectedSlot.exam_date).toLocaleDateString('vi-VN')}`
+      )
+    }
+  }, [selectedSlot])
+
+  const sendMessage = async (text) => {
+    if (!text.trim() || streaming) return
+    const msg = text.trim()
+    setInput('')
+    addUserMessage(msg)
+    startStreaming()
+
+    const sid = sessionId || crypto.randomUUID()
+    if (!sessionId) setSessionId(sid)
+
+    try {
+      const response = await createChatStream(msg, sid, accessToken)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      abortRef.current = reader
+      let buffer = ''
+      let hasPendingConfirm = false
+      let doneContent = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw || raw === '[DONE]') continue
+          try {
+            const event = JSON.parse(raw)
+            if (event.type === 'token') {
+              appendToken(event.content)
+              if (
+                event.content.includes('Confirmation required') ||
+                event.content.includes('⚠️')
+              ) {
+                hasPendingConfirm = true
+              }
+            } else if (event.type === 'tool_start') {
+              addToolCall(event.tool)
+            } else if (event.type === 'tool_end') {
+              removeToolCall(event.tool)
+            } else if (event.type === 'done') {
+              doneContent = event.content || ''
+              break
+            } else if (event.type === 'error') {
+              setError(event.content)
+              return
+            }
+          } catch {
+            // ignore parse errors
+          }
         }
-    }, [selectedSlot])
+      }
 
-    const sendMessage = async (text) => {
-        if (!text.trim() || streaming) return
-        const msg = text.trim()
-        setInput('')
-        addUserMessage(msg)
-        startStreaming()
-
-        // Generate session ID if first message
-        const sid = sessionId || crypto.randomUUID()
-        if (!sessionId) setSessionId(sid)
-
-        try {
-            const response = await createChatStream(msg, sid, accessToken)
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`)
-            }
-
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder()
-            abortRef.current = reader
-            let buffer = ''
-            let hasPendingConfirm = false
-            let tokenReceived = false
-            let doneContent = ''
-
-            while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-                buffer += decoder.decode(value, { stream: true })
-
-                // Parse SSE lines
-                const lines = buffer.split('\n')
-                buffer = lines.pop() ?? ''
-
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue
-                    const raw = line.slice(6).trim()
-                    if (!raw || raw === '[DONE]') continue
-                    try {
-                        const event = JSON.parse(raw)
-                        if (event.type === 'token') {
-                            appendToken(event.content)
-                            tokenReceived = true
-                            if (event.content.includes('Confirmation required') || event.content.includes('⚠️')) {
-                                hasPendingConfirm = true
-                            }
-                        } else if (event.type === 'tool_start') {
-                            addToolCall(event.tool)
-                        } else if (event.type === 'tool_end') {
-                            removeToolCall(event.tool)
-                        } else if (event.type === 'done') {
-                            doneContent = event.content || ''
-                            break
-                        } else if (event.type === 'error') {
-                            setError(event.content)
-                            return
-                        }
-                    } catch {
-                        // ignore parse errors
-                    }
-                }
-            }
-
-            // Always finalize with doneContent when available.
-            // This covers two cases:
-            //   1. No tokens streamed (confirmation/execute path) → use doneContent directly.
-            //   2. "Please wait" token was streamed first, then doneContent has the real plan
-            //      → replace the interim token with the actual result.
-            if (doneContent) {
-                setStreamingContent(doneContent)
-            }
-
-            finishStreaming(hasPendingConfirm)
-        } catch (err) {
-            if (err.name !== 'AbortError') {
-                setError(err.message || 'Lỗi kết nối. Vui lòng thử lại.')
-            }
-        }
+      if (doneContent) {
+        setStreamingContent(doneContent)
+      }
+      finishStreaming(hasPendingConfirm)
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setError(err.message || 'Lỗi kết nối. Vui lòng thử lại.')
+      }
     }
+  }
 
-    const handleSubmit = (e) => {
-        e.preventDefault()
-        resetExam()
-        sendMessage(input)
-    }
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    resetExam()
+    sendMessage(input)
+  }
 
-    const handleConfirm = () => {
-        clearPendingConfirm()
-        sendMessage(CONFIRM_SIGNAL)
-    }
+  const handleConfirm = () => {
+    clearPendingConfirm()
+    sendMessage(CONFIRM_SIGNAL)
+  }
 
-    const handleCancel = () => {
-        clearPendingConfirm()
-        sendMessage(CANCEL_SIGNAL)
-    }
+  const handleCancel = () => {
+    clearPendingConfirm()
+    sendMessage(CANCEL_SIGNAL)
+  }
 
-    return (
-        <>
-            <Navbar />
-            <Container
-                maxWidth="md"
-                sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)' }}
+  const hasContent = messages.length > 0
+
+  return (
+    <>
+      <Navbar />
+      <Container
+        maxWidth="md"
+        disableGutters
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'calc(100svh - 56px)',
+          px: { xs: 2, sm: 3 },
+        }}
+      >
+        {/* ── Header: staff line + title ────────────────────────── */}
+        <Box sx={{ pt: 3, pb: 2, flexShrink: 0 }}>
+          {/* Hairline rule — the single staff line */}
+          <Box
+            className={`staff-line${hasContent ? '' : ' enter'}`}
+            sx={{ mb: 2 }}
+          />
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <MusicNoteOutlinedIcon
+              sx={{
+                color: streaming ? '#A0825C' : '#C4AC84',
+                fontSize: 18,
+                transition: 'color 0.6s ease',
+              }}
+            />
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              fontWeight={400}
+              letterSpacing="-0.005em"
             >
-                <Typography variant="h6" fontWeight={600} sx={{ py: 2 }}>
-                    Trợ lý tư vấn thi Trinity 🎵
-                </Typography>
+              {streaming
+                ? 'Đang trả lời...'
+                : 'Trợ lý tư vấn thi Trinity'}
+            </Typography>
+          </Box>
+        </Box>
 
-                {/* Message list */}
-                <Box sx={{ flex: 1, overflowY: 'auto', pb: 2 }}>
-                    {messages.length === 0 && (
-                        <Typography color="text.secondary" align="center" mt={4}>
-                            Xin chào! Tôi có thể giúp bạn tra cứu chương trình thi, tư vấn cấp độ, và đặt lịch thi Trinity.
-                        </Typography>
-                    )}
-                    {messages.map((msg, i) => (
-                        <ChatBubble key={i} role={msg.role} content={msg.content} />
-                    ))}
-                    {streaming && streamingContent && (
-                        <ChatBubble role="assistant" content={streamingContent} streaming />
-                    )}
-                    {streaming && activeTools.length > 0 && !streamingContent && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 0.5, mb: 1.5 }}>
-                            {activeTools.map(tool => (
-                                <Chip
-                                    key={tool}
-                                    icon={<SettingsIcon sx={{ fontSize: 14, animation: 'spin 1.5s linear infinite', '@keyframes spin': { from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } } }} />}
-                                    label={tool.replace(/_/g, ' ')}
-                                    size="small"
-                                    variant="outlined"
-                                    sx={{ fontSize: '0.75rem', color: 'text.secondary' }}
-                                />
-                            ))}
-                        </Box>
-                    )}
-                    <div ref={bottomRef} />
-                </Box>
+        {/* ── Messages ──────────────────────────────────────────── */}
+        <Box sx={{ flex: 1, overflowY: 'auto', py: 1 }}>
+          {!hasContent && !streaming && (
+            <Box className="empty-state" sx={{ mt: 6 }}>
+              <Typography variant="body1" color="text.secondary" mb={1}>
+                Xin chào!
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Tôi có thể giúp bạn tra cứu chương trình thi,<br />
+                tư vấn cấp độ, và đặt lịch thi Trinity.
+              </Typography>
+            </Box>
+          )}
 
-                {/* Confirmation banner */}
-                {pendingConfirm && (
-                    <ConfirmBanner onConfirm={handleConfirm} onCancel={handleCancel} />
-                )}
+          {messages.map((msg, i) => (
+            <ChatBubble key={i} role={msg.role} content={msg.content} />
+          ))}
 
-                {/* Input */}
-                <Paper
-                    component="form"
-                    onSubmit={handleSubmit}
-                    elevation={2}
-                    sx={{ p: 1, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}
-                >
-                    <TextField
-                        fullWidth
-                        size="small"
-                        placeholder="Nhập câu hỏi hoặc yêu cầu đặt lịch..."
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        disabled={streaming}
-                        multiline
-                        maxRows={4}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault()
-                                handleSubmit(e)
-                            }
-                        }}
-                        InputProps={{
-                            endAdornment: (
-                                <InputAdornment position="end">
-                                    <IconButton type="submit" disabled={!input.trim() || streaming} color="primary">
-                                        <SendIcon />
-                                    </IconButton>
-                                </InputAdornment>
-                            ),
-                        }}
-                    />
-                </Paper>
-            </Container>
-        </>
-    )
+          {streaming && streamingContent && (
+            <ChatBubble
+              role="assistant"
+              content={streamingContent}
+              streaming
+            />
+          )}
+
+          {/* Tool call chips */}
+          {streaming && activeTools.length > 0 && !streamingContent && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 0.5,
+                mb: 2,
+                pl: 6,
+              }}
+            >
+              {activeTools.map((tool) => (
+                <Chip
+                  key={tool}
+                  label={tool.replace(/_/g, ' ')}
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    fontSize: '0.75rem',
+                    color: 'text.secondary',
+                    borderColor: 'divider',
+                  }}
+                />
+              ))}
+            </Box>
+          )}
+
+          <div ref={bottomRef} />
+        </Box>
+
+        {/* ── Confirmation banner ────────────────────────────────── */}
+        {pendingConfirm && (
+          <ConfirmBanner onConfirm={handleConfirm} onCancel={handleCancel} />
+        )}
+
+        {/* ── Input ─────────────────────────────────────────────── */}
+        <Box className="chat-input-container" sx={{ flexShrink: 0 }}>
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}
+          >
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Nhập câu hỏi hoặc yêu cầu..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={streaming}
+              multiline
+              maxRows={4}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSubmit(e)
+                }
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: '#F5F4F2',
+                  borderRadius: '12px',
+                  fontSize: '0.9375rem',
+                },
+              }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      type="submit"
+                      disabled={!input.trim() || streaming}
+                      size="small"
+                      sx={{
+                        color: input.trim() && !streaming ? '#A0825C' : '#CCC8C2',
+                        transition: 'color 0.2s ease',
+                      }}
+                    >
+                      <SendIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+        </Box>
+      </Container>
+    </>
+  )
 }

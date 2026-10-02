@@ -1,50 +1,31 @@
-import { Box, Button, Paper, Typography } from '@mui/material'
-import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
-import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined'
+import { Box, Button, Typography } from '@mui/material'
 
 /**
- * ConfirmBanner — shown when agent requires explicit confirmation
- * before a write action (create_booking, cancel_booking).
+ * ConfirmBanner — minimal confirmation gate.
+ * A thin crimson left border like a rest mark in a score.
  */
 export default function ConfirmBanner({ onConfirm, onCancel }) {
-    return (
-        <Paper
-            variant="outlined"
-            sx={{
-                p: 2,
-                mb: 2,
-                borderColor: 'warning.main',
-                bgcolor: 'warning.50',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: 1,
-            }}
+  return (
+    <Box className="confirm-banner">
+      <Typography variant="body2" color="text.primary" fontWeight={500}>
+        Trợ lý cần bạn xác nhận để tiếp tục.
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button
+          size="small"
+          variant="contained"
+          onClick={onConfirm}
+          sx={{
+            bgcolor: '#5C8A67',
+            '&:hover': { bgcolor: '#4A7355' },
+          }}
         >
-            <Typography variant="body2" fontWeight={500}>
-                ⚠️ Trợ lý cần xác nhận của bạn để thực hiện thao tác này.
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                    size="small"
-                    variant="contained"
-                    color="success"
-                    startIcon={<CheckCircleOutlinedIcon />}
-                    onClick={onConfirm}
-                >
-                    Xác nhận
-                </Button>
-                <Button
-                    size="small"
-                    variant="outlined"
-                    color="error"
-                    startIcon={<CancelOutlinedIcon />}
-                    onClick={onCancel}
-                >
-                    Hủy
-                </Button>
-            </Box>
-        </Paper>
-    )
+          Xác nhận
+        </Button>
+        <Button size="small" variant="outlined" onClick={onCancel}>
+          Hủy
+        </Button>
+      </Box>
+    </Box>
+  )
 }

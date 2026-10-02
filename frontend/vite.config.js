@@ -24,6 +24,11 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
+    server: {
+      deps: {
+        inline: ['remark-gfm'],
+      },
+    },
     alias: [
       {
         // Redirect ALL MUI icon imports (barrel & sub-path) to a null stub in test env
