@@ -3,10 +3,12 @@ JWT dependency shared with Django — validates HS256 tokens issued by Django Si
 Extracts user_id from the `user_id` claim (matching SimpleJWT's USER_ID_CLAIM setting).
 """
 from typing import Annotated
+
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
+
 from .config import get_settings
 
 _bearer = HTTPBearer()
@@ -61,4 +63,6 @@ async def get_optional_user(
 ) -> TokenPayload | None:
     if credentials is None:
         return None
-    return _decode_token(credentials.credentials)
+    payload = _decode_token(credentials.credentials)
+    payload.raw_token = credentials.credentials
+    return payload

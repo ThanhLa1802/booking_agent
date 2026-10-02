@@ -6,8 +6,8 @@ No Django DB required; all inputs are plain dataclasses.
 from __future__ import annotations
 
 import pytest
-from centers.solver import ExaminerData, SlotData, solve
 
+from centers.solver import ExaminerData, SlotData, solve
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

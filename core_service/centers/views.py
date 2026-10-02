@@ -1,6 +1,7 @@
 import json
 
 import redis as _redis
+from accounts.models import UserProfile, UserRole
 from django.conf import settings
 from django.db import models, transaction
 from rest_framework import generics, serializers, status, viewsets
@@ -8,8 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import UserRole
-from .models import ExamCenter, ExamSlot, Examiner, ExaminerUnavailability
+from .models import ExamCenter, Examiner, ExaminerUnavailability, ExamSlot
 from .serializers import (
     AssignExaminerSerializer,
     ExamCenterSerializer,
@@ -24,7 +24,7 @@ def _is_center_admin(user) -> bool:
     """Return True if the authenticated user has the CENTER_ADMIN role."""
     try:
         return user.profile.role == UserRole.CENTER_ADMIN
-    except Exception:
+    except (AttributeError, UserProfile.DoesNotExist):
         return False
 
 
@@ -331,7 +331,8 @@ class BatchScheduleConfirmView(APIView):
                 assigned_count += updated
 
         # Update Redis record to COMMITTED
-        from datetime import datetime, timezone as _tz
+        from datetime import datetime
+        from datetime import timezone as _tz
         plan_data["status"] = "COMMITTED"
         plan_data["assigned_count"] = assigned_count
         plan_data["committed_at"] = datetime.now(_tz.utc).isoformat()

@@ -1,0 +1,23 @@
+# Ruff configuration — Trinity AI
+# Focused, low-noise rule set: real errors + import hygiene.
+# Style (E501 etc.) intentionally excluded to avoid churn; run `ruff format` separately.
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = [
+    "E4",  # import
+    "E7",  # statement
+    "E9",  # runtime
+    "F",   # pyflakes (unused imports/vars, undefined names)
+    "I",   # isort
+]
+ignore = [
+    "F841",  # local variable assigned but never used (common in tests/fixtures)
+]
+
+[lint.per-file-ignores]
+# Test files often import fixtures for side effects and use loose typing.
+# E402 allowed: conftest sets env vars before importing app modules.
+"**/tests/**" = ["F401", "F811", "E402"]
+"**/conftest.py" = ["F401", "F811", "E402"]

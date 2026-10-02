@@ -1,7 +1,8 @@
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
-from .models import Instrument, Course
-from .serializers import InstrumentSerializer, CourseSerializer
+
+from .models import Course, Instrument
+from .serializers import CourseSerializer, InstrumentSerializer
 
 
 class InstrumentListView(generics.ListAPIView):

@@ -9,6 +9,7 @@ Slot availability is read directly from the DB (centers_examslot.reserved_count)
 Concurrency on writes is handled by Django's select_for_update() inside a transaction.
 """
 import redis.asyncio as aioredis
+
 from fast_api_services.config import get_settings
 
 _redis_client: aioredis.Redis | None = None

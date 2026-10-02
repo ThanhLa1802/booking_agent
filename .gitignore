@@ -32,6 +32,7 @@ coverage.xml
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # Node / React
 node_modules/
@@ -54,6 +55,9 @@ deployment/ollama_data/
 *.swo
 .DS_Store
 Thumbs.db
+
+# CodeGraph local index
+.codegraph/
 
 # k6 results
 k6/*.json

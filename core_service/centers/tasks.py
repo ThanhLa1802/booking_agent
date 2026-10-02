@@ -18,7 +18,7 @@ from celery import shared_task
 from django.conf import settings
 from django.db.models import Count
 
-from centers.models import ExamSlot, Examiner
+from centers.models import Examiner, ExamSlot
 from centers.solver import ExaminerData, SlotData, solve
 
 logger = logging.getLogger(__name__)

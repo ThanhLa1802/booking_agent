@@ -1,6 +1,8 @@
 from typing import Optional
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from fast_api_services.schemas.models import BookingOut, SlotDetail
 
 

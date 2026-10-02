@@ -1,5 +1,6 @@
 import pytest
-from catalog.models import Instrument, Course, StyleChoice
+
+from catalog.models import Course, Instrument, StyleChoice
 
 
 @pytest.mark.django_db

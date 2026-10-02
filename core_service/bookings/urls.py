@@ -1,5 +1,11 @@
 from django.urls import path
-from .views import BookingCancelView, BookingDetailView, BookingListCreateView, BookingRescheduleView
+
+from .views import (
+    BookingCancelView,
+    BookingDetailView,
+    BookingListCreateView,
+    BookingRescheduleView,
+)
 
 urlpatterns = [
     path("", BookingListCreateView.as_view(), name="booking-list-create"),

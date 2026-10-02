@@ -81,7 +81,7 @@ def create_supervisor_graph(
         the routing decision (user_role, thread_id) is preserved through sub-graph
         invocation.
     """
-    from langgraph.graph import END, START, StateGraph
+    from langgraph.graph import END, START
 
     from .booking_graph import create_booking_graph
     from .scheduling_graph import create_scheduling_graph

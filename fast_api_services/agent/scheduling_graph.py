@@ -18,16 +18,11 @@ batch_assign flow:
 from __future__ import annotations
 
 import calendar as _calendar
-import json
 import logging
 import re as _re
 from datetime import date as _date
-from typing import Any
 
-import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
-from fast_api_services.config import get_settings
 
 from .state import SchedulingState
 
@@ -127,7 +122,7 @@ def _make_fetch_node(tools: list):
             (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             None,
         )
-        user_msg = last_human.content if last_human else ""
+        user_msg = str(last_human.content) if last_human else ""
         task_type = state.get("task_type", "general")
         fetched_text = ""
 
@@ -164,13 +159,13 @@ def _make_fetch_node(tools: list):
                 # Fall back to calendar view
                 tool = tool_map.get("get_exam_calendar")
                 if tool:
-                    cal_args: dict = {}
+                    fallback_args: dict = {}
                     if date_from:
-                        cal_args["date_from"] = date_from
+                        fallback_args["date_from"] = date_from
                     if date_to:
-                        cal_args["date_to"] = date_to
-                    fetched_text = await tool.ainvoke(cal_args)
-                    
+                        fallback_args["date_to"] = date_to
+                    fetched_text = await tool.ainvoke(fallback_args)
+
                 if examiner_id is None and date_from is None:
                     fetched_text = (
                         "❌ Vui lòng cung cấp: ngày tháng và ID giám khảo. "
@@ -376,7 +371,7 @@ async def confirm_node(state: SchedulingState) -> dict:
     if not last_human:
         return {}
 
-    text = last_human.content.strip().lower()
+    text = str(last_human.content).strip().lower()
 
     if any(kw in text for kw in _CONFIRM_KEYWORDS):
         return {"confirmed": True}

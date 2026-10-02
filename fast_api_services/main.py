@@ -1,12 +1,15 @@
-from contextlib import asynccontextmanager
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from .config import get_settings
-from .routers import catalog, bookings, agent as agent_router, scheduling as scheduling_router
+from .routers import agent as agent_router
+from .routers import bookings, catalog
+from .routers import scheduling as scheduling_router
 
 logger = logging.getLogger(__name__)
 

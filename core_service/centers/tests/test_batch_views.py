@@ -10,7 +10,6 @@ import pytest
 from django.contrib.auth.models import User
 from rest_framework.test import APIClient
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _make_admin_client(db):
@@ -85,6 +84,7 @@ def test_confirm_bulk_assigns_slots(mock_redis_module):
     client, user, center = _make_admin_client(None)
 
     from catalog.models import Course, Instrument
+
     from centers.models import Examiner, ExamSlot
 
     instrument = Instrument.objects.create(name="Piano", style="CLASSICAL_JAZZ")

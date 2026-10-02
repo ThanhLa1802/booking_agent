@@ -3,9 +3,11 @@ Tests for agent tools — especially the confirmation gate pattern.
 
 No real DB, Redis, or Ollama needed: everything is mocked.
 """
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from fast_api_services.agent.tools import ToolContext, make_tools, _CONFIRM_REQUIRED
+
+import pytest
+
+from fast_api_services.agent.tools import _CONFIRM_REQUIRED, ToolContext, make_tools
 
 
 @pytest.fixture

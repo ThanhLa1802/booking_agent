@@ -3,19 +3,20 @@ Bookings router — reads via FastAPI/DB, writes proxied to Django (transactiona
 Confirmation gate: POST/DELETE require confirm=True in request body.
 """
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from httpx import AsyncClient, HTTPStatusError
 
-from fast_api_services.auth import get_current_user, TokenPayload
+from fastapi import APIRouter, Depends, HTTPException, status
+from httpx import AsyncClient, HTTPStatusError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from fast_api_services.auth import TokenPayload, get_current_user
+from fast_api_services.config import get_settings
 from fast_api_services.database import get_db
 from fast_api_services.schemas.models import (
-    BookingOut,
-    BookingCreateIn,
     BookingCancelIn,
+    BookingCreateIn,
+    BookingOut,
 )
-from fast_api_services.services.booking_service import list_user_bookings, get_booking
-from fast_api_services.config import get_settings
+from fast_api_services.services.booking_service import get_booking, list_user_bookings
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 

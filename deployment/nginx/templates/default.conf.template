@@ -1,0 +1,114 @@
+# Production nginx — templated by the official nginx image entrypoint.
+# ${DOMAIN} is substituted at container start from the DOMAIN env var.
+# nginx variables ($host, $remote_addr, ...) are left untouched by envsubst.
+
+# ── Rate limit zones (http context) ───────────────────────────────────────────
+limit_req_zone $binary_remote_addr zone=auth:10m  rate=5r/m;
+limit_req_zone $binary_remote_addr zone=agent:10m rate=30r/m;
+
+# Docker embedded DNS — re-resolve upstreams so container restarts don't 502.
+resolver 127.0.0.11 valid=30s ipv6=off;
+
+# ── HTTP :80 — ACME challenge + redirect to HTTPS ─────────────────────────────
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS :443 ────────────────────────────────────────────────────────────────
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options    "nosniff" always;
+    add_header X-Frame-Options           "DENY" always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
+
+    client_max_body_size 10M;
+
+    # Variable targets force per-request DNS re-resolution.
+    set $django_upstream  "http://django:8000";
+    set $fastapi_upstream "http://fast_api:8001";
+
+    # --- Auth endpoints → Django (brute-force limited) ---
+    location /api/auth/ {
+        limit_req zone=auth burst=10 nodelay;
+        proxy_pass         $django_upstream;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+    }
+
+    # --- Booking writes → Django (transactional) ---
+    location /api/bookings/create {
+        proxy_pass         $django_upstream;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+    }
+
+    # --- AI agent SSE stream → FastAPI (rate limited, no buffering) ---
+    location /api/agent/chat {
+        limit_req zone=agent burst=10 nodelay;
+        proxy_pass         $fastapi_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+        proxy_set_header   Connection "";
+        proxy_buffering    off;
+        proxy_cache        off;
+        proxy_read_timeout 300s;
+        add_header X-Accel-Buffering no;
+    }
+
+    # --- All other /api/* → FastAPI ---
+    location /api/ {
+        proxy_pass         $fastapi_upstream;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+    }
+
+    # --- Django admin + static ---
+    location /admin/ {
+        proxy_pass         $django_upstream;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+    }
+
+    location /static/ {
+        proxy_pass         $django_upstream;
+        proxy_set_header   Host $host;
+    }
+
+    # --- React SPA ---
+    location / {
+        root      /usr/share/nginx/html;
+        index     index.html;
+        try_files $uri $uri/ /index.html;
+    }
+}

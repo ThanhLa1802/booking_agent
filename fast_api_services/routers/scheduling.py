@@ -48,6 +48,7 @@ router = APIRouter(prefix="/scheduling", tags=["scheduling"])
 async def _require_center_admin(current_user=Depends(get_current_user)):
     """Dependency — raises 403 if caller is not CENTER_ADMIN."""
     from sqlalchemy import text
+
     from fast_api_services.database import get_session_factory
 
     async with get_session_factory()() as db:

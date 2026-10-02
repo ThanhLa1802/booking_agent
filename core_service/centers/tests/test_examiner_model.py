@@ -8,7 +8,6 @@ import datetime
 import pytest
 from django.contrib.auth.models import User
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _make_instrument(name="Piano", style="CLASSICAL_JAZZ"):

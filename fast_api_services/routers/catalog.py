@@ -1,14 +1,16 @@
 from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from fast_api_services.database import get_db
+from fast_api_services.schemas.models import CourseOut, ExamSlotOut, InstrumentOut
 from fast_api_services.services.catalog_service import (
-    list_instruments,
-    list_courses,
     get_course,
     list_available_slots,
+    list_courses,
+    list_instruments,
 )
-from fast_api_services.schemas.models import InstrumentOut, CourseOut, ExamSlotOut
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 

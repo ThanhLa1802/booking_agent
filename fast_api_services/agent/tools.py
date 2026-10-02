@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from fast_api_services.config import get_settings
 from fast_api_services.services.booking_service import get_booking, list_user_bookings
-from fast_api_services.services.catalog_service import list_available_slots, list_courses
 
 from .rag import search_docs as _search_docs
 

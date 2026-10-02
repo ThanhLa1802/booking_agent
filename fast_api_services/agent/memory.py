@@ -62,6 +62,7 @@ async def save_history(
     existing = await load_history(redis, user_id)
     existing.append(HumanMessage(content=human_msg))
     existing.append(AIMessage(content=ai_msg))
+    existing = existing[-10:]  # keep at most 5 turns (10 messages) in Redis
     try:
         await redis.setex(_redis_key(user_id), ttl, _serialize(existing))
     except Exception as exc:

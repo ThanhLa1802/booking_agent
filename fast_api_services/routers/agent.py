@@ -18,14 +18,14 @@ import json
 import logging
 import re
 from typing import AsyncGenerator, Optional
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_api_services.auth import get_current_user
 from fast_api_services.config import get_settings
-from fast_api_services.database import get_db, get_session_factory
+from fast_api_services.database import get_session_factory
 
 # Heavy AI imports are lazy (inside endpoint) to avoid torch/numpy BLAS crash
 
@@ -67,7 +67,6 @@ async def chat(
 
     async def event_stream() -> AsyncGenerator[dict, None]:
         # ── lazy imports to avoid torch/numpy crash at module load ─────────
-        from fast_api_services.agent.agent import create_agent
         from fast_api_services.agent.llm import get_embeddings, get_llm
         from fast_api_services.agent.memory import (
             clear_pending_proposal,
@@ -95,7 +94,7 @@ async def chat(
         center_id = 0
         try:
             async with session_factory() as db:
-                from sqlalchemy import select, text
+                from sqlalchemy import text
                 # Query user profile to get role and find associated center
                 query = text("""
                     SELECT up.role, ec.id AS center_id
@@ -164,21 +163,27 @@ async def chat(
         # ── early "please wait" feedback for batch scheduling ──────────────
         # batch scheduling takes 15+ s (Celery task + Redis polling).
         # Yield a status token immediately so the admin sees feedback.
-        import re as _batch_re
         _is_batch_sched = (
             not _resume
             and user_role == "CENTER_ADMIN"
-            and _batch_re.search(r"xếp lịch|lập lịch", request.message, _batch_re.IGNORECASE)
-            and _batch_re.search(r"tháng|tuần|month|week|\d{4}-\d{2}-\d{2}", request.message, _batch_re.IGNORECASE)
+            and re.search(r"xếp lịch|lập lịch", request.message, re.IGNORECASE)
+            and re.search(r"tháng|tuần|month|week|\d{4}-\d{2}-\d{2}", request.message, re.IGNORECASE)
         )
         if _is_batch_sched:
             yield {"data": json.dumps({"type": "token", "content": "⏳ Đang xếp lịch, vui lòng đợi trong giây lát..."})}
 
+        if _resume and pending_proposal is not None:
+            resume_task_type = pending_proposal["task_type"]
+            resume_proposal = pending_proposal["proposal"]
+        else:
+            resume_task_type = "general"
+            resume_proposal = None
+
         initial_state = {
             "messages": [HumanMessage(content=request.message)],
             "user_role": user_role,
-            "task_type": pending_proposal["task_type"] if _resume else "general",
-            "proposal": pending_proposal["proposal"] if _resume else None,
+            "task_type": resume_task_type,
+            "proposal": resume_proposal,
             "confirmed": True if _resume else False,
             "thread_id": str(user_id),
         }

@@ -4,9 +4,10 @@ Tests for POST /api/agent/chat — SSE endpoint.
 The LangChain agent is fully mocked; no Ollama needed.
 """
 import json
-import pytest
-from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -19,10 +20,12 @@ def _make_fake_token_event(text: str):
 
 
 def _make_fake_done_event(output: str):
+    from langchain_core.messages import AIMessage
+
     return {
         "event": "on_chain_end",
-        "name": "AgentExecutor",
-        "data": {"output": {"output": output}},
+        "name": "LangGraph",
+        "data": {"output": {"messages": [AIMessage(content=output)]}},
     }
 
 
@@ -36,12 +39,12 @@ async def _fake_stream(events):
 @pytest.fixture
 def authed_client(fake_redis):
     """AsyncClient with auth dependency overridden."""
-    from fast_api_services.main import app
-    from fast_api_services.auth import get_current_user
+    from fast_api_services.auth import TokenPayload, get_current_user
     from fast_api_services.database import get_db
+    from fast_api_services.main import app
 
     async def override_user():
-        return {"user_id": 1, "email": "test@example.com", "role": "STUDENT"}
+        return TokenPayload(user_id=1, username="test@example.com", raw_token="testtoken")
 
     mock_db = AsyncMock()
 
@@ -110,20 +113,26 @@ async def test_chat_endpoint_emits_done_event(authed_client, fake_redis):
     final_answer = "Đây là câu trả lời cuối."
 
     events = [_make_fake_done_event(final_answer)]
-    fake_executor = MagicMock()
-    fake_executor.astream_events = MagicMock(return_value=_fake_stream(events))
+    fake_supervisor = MagicMock()
+    fake_supervisor.astream_events = MagicMock(return_value=_fake_stream(events))
 
     with (
         patch("fast_api_services.agent.llm.get_llm", return_value=MagicMock()),
         patch("fast_api_services.agent.llm.get_embeddings", return_value=MagicMock()),
         patch("fast_api_services.agent.tools.make_tools", return_value=[]),
+        patch("fast_api_services.agent.scheduling_tools.make_scheduling_tools", return_value=[]),
+        patch("fast_api_services.agent.scheduling_tools.make_reschedule_tools", return_value=[]),
         patch("fast_api_services.agent.memory.load_history", new=AsyncMock(return_value=[])),
+        patch("fast_api_services.agent.memory.load_pending_proposal", new=AsyncMock(return_value=None)),
         patch("fast_api_services.agent.memory.save_history", new=AsyncMock()),
-        patch("fast_api_services.agent.agent.create_agent", return_value=fake_executor),
+        patch("fast_api_services.agent.memory.save_pending_proposal", new=AsyncMock()),
+        patch("fast_api_services.agent.memory.clear_pending_proposal", new=AsyncMock()),
+        patch("fast_api_services.agent.supervisor.create_supervisor_graph", return_value=fake_supervisor),
         patch(
             "fast_api_services.services.slot_cache.get_redis_client",
             new=AsyncMock(return_value=fake_redis),
         ),
+        patch("fast_api_services.database.get_session_factory", return_value=MagicMock()),
     ):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
@@ -183,25 +192,31 @@ async def test_chat_empty_message_rejected(authed_client):
 
 @pytest.mark.asyncio
 async def test_chat_saves_history_after_done(authed_client, fake_redis):
-    """save_history should be called once after the AgentExecutor finishes."""
+    """save_history should be called once after the supervisor graph finishes."""
     app, _, _ = authed_client
     save_mock = AsyncMock()
 
     events = [_make_fake_done_event("Done!")]
-    fake_executor = MagicMock()
-    fake_executor.astream_events = MagicMock(return_value=_fake_stream(events))
+    fake_supervisor = MagicMock()
+    fake_supervisor.astream_events = MagicMock(return_value=_fake_stream(events))
 
     with (
         patch("fast_api_services.agent.llm.get_llm", return_value=MagicMock()),
         patch("fast_api_services.agent.llm.get_embeddings", return_value=MagicMock()),
         patch("fast_api_services.agent.tools.make_tools", return_value=[]),
+        patch("fast_api_services.agent.scheduling_tools.make_scheduling_tools", return_value=[]),
+        patch("fast_api_services.agent.scheduling_tools.make_reschedule_tools", return_value=[]),
         patch("fast_api_services.agent.memory.load_history", new=AsyncMock(return_value=[])),
+        patch("fast_api_services.agent.memory.load_pending_proposal", new=AsyncMock(return_value=None)),
         patch("fast_api_services.agent.memory.save_history", new=save_mock),
-        patch("fast_api_services.agent.agent.create_agent", return_value=fake_executor),
+        patch("fast_api_services.agent.memory.save_pending_proposal", new=AsyncMock()),
+        patch("fast_api_services.agent.memory.clear_pending_proposal", new=AsyncMock()),
+        patch("fast_api_services.agent.supervisor.create_supervisor_graph", return_value=fake_supervisor),
         patch(
             "fast_api_services.services.slot_cache.get_redis_client",
             new=AsyncMock(return_value=fake_redis),
         ),
+        patch("fast_api_services.database.get_session_factory", return_value=MagicMock()),
     ):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"

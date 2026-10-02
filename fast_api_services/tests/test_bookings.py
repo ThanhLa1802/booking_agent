@@ -1,12 +1,12 @@
 """Tests for booking endpoints — confirmation gate and slot hold logic."""
-import pytest
 import datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from jose import jwt
 
-
-TEST_SECRET = "dev-secret-key-change-in-production-1234567890abcdef"
+from fast_api_services.tests.conftest import TEST_SECRET_KEY as TEST_SECRET
 
 
 def _make_jwt(user_id: int = 1) -> str:
@@ -40,9 +40,10 @@ def _make_booking_out():
 class TestBookingConfirmationGate:
     @pytest.mark.asyncio
     async def test_create_booking_requires_confirm_true(self):
-        from fast_api_services.main import app
+        from httpx import ASGITransport, AsyncClient
+
         from fast_api_services.database import get_db
-        from httpx import AsyncClient, ASGITransport
+        from fast_api_services.main import app
 
         mock_db = AsyncMock()
         app.dependency_overrides[get_db] = lambda: (x for x in [mock_db])
@@ -67,9 +68,10 @@ class TestBookingConfirmationGate:
 
     @pytest.mark.asyncio
     async def test_cancel_booking_requires_confirm_true(self):
-        from fast_api_services.main import app
+        from httpx import ASGITransport, AsyncClient
+
         from fast_api_services.database import get_db
-        from httpx import AsyncClient, ASGITransport
+        from fast_api_services.main import app
 
         mock_db = AsyncMock()
         booking = _make_booking_out()
@@ -95,12 +97,13 @@ class TestBookingConfirmationGate:
 
     @pytest.mark.asyncio
     async def test_bookings_list_requires_auth(self):
+        from httpx import ASGITransport, AsyncClient
+
         from fast_api_services.main import app
-        from httpx import AsyncClient, ASGITransport
 
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as ac:
             resp = await ac.get("/api/bookings")
 
-        assert resp.status_code == 403  # HTTPBearer returns 403 on missing credentials
+        assert resp.status_code == 401  # HTTPBearer returns 401 on missing credentials

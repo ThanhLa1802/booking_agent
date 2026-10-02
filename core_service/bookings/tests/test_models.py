@@ -1,4 +1,5 @@
 import pytest
+
 from bookings.models import BookingStatus
 
 
@@ -20,9 +21,10 @@ class TestBookingStatusChoices:
 @pytest.mark.django_db
 class TestExamSlotAvailability:
     def test_available_when_capacity_not_reached(self):
-        from centers.models import ExamCenter, ExamSlot
-        from catalog.models import Instrument, Course, StyleChoice
         import datetime
+
+        from catalog.models import Course, Instrument, StyleChoice
+        from centers.models import ExamCenter, ExamSlot
 
         instrument = Instrument.objects.create(name="Piano", style=StyleChoice.CLASSICAL_JAZZ)
         course = Course.objects.create(
@@ -43,9 +45,10 @@ class TestExamSlotAvailability:
         assert slot.is_available is True
 
     def test_not_available_when_full(self):
-        from centers.models import ExamCenter, ExamSlot
-        from catalog.models import Instrument, Course, StyleChoice
         import datetime
+
+        from catalog.models import Course, Instrument, StyleChoice
+        from centers.models import ExamCenter, ExamSlot
 
         instrument = Instrument.objects.create(name="Violin", style=StyleChoice.CLASSICAL_JAZZ)
         course = Course.objects.create(

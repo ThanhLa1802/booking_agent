@@ -1,8 +1,10 @@
 from datetime import date as date_type
 from typing import Optional
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from fast_api_services.schemas.models import InstrumentOut, CourseOut, ExamSlotOut
+
+from fast_api_services.schemas.models import CourseOut, ExamSlotOut, InstrumentOut
 
 STYLE_LABELS = {
     "CLASSICAL_JAZZ": "Classical & Jazz",

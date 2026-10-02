@@ -4,8 +4,9 @@ Tests for the RAG service: document indexing and semantic search.
 Uses FakeEmbeddings (returns deterministic vectors) so no Ollama is needed.
 Uses chromadb.EphemeralClient for an in-memory store.
 """
-import pytest
 from pathlib import Path
+
+import pytest
 from langchain_core.embeddings import Embeddings
 
 
@@ -57,6 +58,7 @@ def test_index_docs_returns_chunk_count(tmp_docs, tmp_path):
     """index_docs should return > 0 chunks on first run."""
     import chromadb
     from langchain_chroma import Chroma
+
     from fast_api_services.agent import rag
 
     embeddings = FakeEmbeddings()
@@ -88,6 +90,7 @@ def test_index_docs_skips_on_second_call(tmp_docs, tmp_path):
     """index_docs should return 0 if collection already has documents."""
     import chromadb
     from langchain_chroma import Chroma
+
     from fast_api_services.agent import rag
 
     embeddings = FakeEmbeddings()
@@ -117,6 +120,7 @@ def test_search_docs_returns_results(tmp_docs, tmp_path):
     """search_docs should return non-empty list for relevant query."""
     import chromadb
     from langchain_chroma import Chroma
+
     from fast_api_services.agent import rag
 
     embeddings = FakeEmbeddings()
@@ -146,6 +150,7 @@ def test_search_docs_returns_empty_on_empty_store(tmp_path):
     """search_docs on empty collection should return [] not raise."""
     import chromadb
     from langchain_chroma import Chroma
+
     from fast_api_services.agent import rag
 
     embeddings = FakeEmbeddings()

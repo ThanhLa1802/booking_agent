@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Instrument, Course
+
+from .models import Course, Instrument
 
 
 class InstrumentSerializer(serializers.ModelSerializer):

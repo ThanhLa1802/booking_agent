@@ -2,11 +2,11 @@
 Read-only Pydantic/SQLModel schemas that map to the Django-managed tables.
 FastAPI only reads; Django owns all writes and migrations.
 """
-from datetime import date, time, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Optional
-from pydantic import BaseModel
 
+from pydantic import BaseModel
 
 # ── Catalog ───────────────────────────────────────────────────────────────────
 

@@ -3,17 +3,9 @@
 !.env.example
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 *.sqlite3
 chromadb_data/
-docs/
 tests/
-.DS_Store

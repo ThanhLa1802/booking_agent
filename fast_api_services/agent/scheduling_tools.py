@@ -18,7 +18,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date as date_type
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -67,8 +67,10 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
             Formatted list of examiners with daily capacity info.
         """
         from fast_api_services.services.examiner_service import (
-            list_examiners as _list,
             get_examiner_daily_load,
+        )
+        from fast_api_services.services.examiner_service import (
+            list_examiners as _list,
         )
 
         parsed_date = date_type.fromisoformat(available_date) if available_date else None
@@ -105,7 +107,9 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
         Returns:
             Ranked list of available examiners for that slot.
         """
-        from fast_api_services.services.examiner_service import suggest_examiners_for_slot as _suggest
+        from fast_api_services.services.examiner_service import (
+            suggest_examiners_for_slot as _suggest,
+        )
 
         async with ctx.session_factory() as db:
             suggestions = await _suggest(db, slot_id)
@@ -183,7 +187,7 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
             slots = [s for s in slots if s.examiner_id == examiner_id]
 
         if not slots:
-            return f"No slots found matching your criteria."
+            return "No slots found matching your criteria."
 
         lines = []
         for s in slots:
@@ -400,7 +404,9 @@ def make_reschedule_tools(ctx: SchedulingToolContext, user_id: int) -> list:
         Returns:
             Formatted list of suggested slots.
         """
-        from fast_api_services.services.catalog_service import suggest_slots_for_reschedule as _suggest
+        from fast_api_services.services.catalog_service import (
+            suggest_slots_for_reschedule as _suggest,
+        )
 
         async with ctx.session_factory() as db:
             slots = await _suggest(db, booking_id, user_id, date_from, date_to, city)

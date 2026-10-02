@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import ExamCenter, ExamSlot, Examiner, ExaminerUnavailability
+
+from .models import ExamCenter, Examiner, ExaminerUnavailability, ExamSlot
 
 
 class ExamCenterSerializer(serializers.ModelSerializer):

@@ -15,11 +15,11 @@ What it creates:
 
 import datetime
 
+from catalog.models import Course, Instrument
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 
-from catalog.models import Course, Instrument
-from centers.models import ExamCenter, ExamSlot, Examiner, ExaminerUnavailability
+from centers.models import ExamCenter, Examiner, ExaminerUnavailability, ExamSlot
 
 
 class Command(BaseCommand):

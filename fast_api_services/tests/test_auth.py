@@ -1,9 +1,9 @@
 """Unit tests for JWT auth dependency (no DB / Redis needed)."""
-import pytest
 from unittest.mock import patch
-from jose import jwt
-from fastapi import HTTPException
 
+import pytest
+from fastapi import HTTPException
+from jose import jwt
 
 TEST_SECRET = "test-secret-key-1234"
 TEST_ALGORITHM = "HS256"

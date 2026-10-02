@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _make_slot(id, exam_date="2026-06-01", start_time="09:00", instrument_id=1):

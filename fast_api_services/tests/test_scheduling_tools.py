@@ -13,12 +13,13 @@ Covers:
 """
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from fast_api_services.agent.scheduling_tools import (
-    SchedulingToolContext,
     _CONFIRM_REQUIRED,
+    SchedulingToolContext,
     make_reschedule_tools,
     make_scheduling_tools,
 )

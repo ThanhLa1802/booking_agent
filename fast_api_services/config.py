@@ -1,9 +1,22 @@
 from functools import lru_cache
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEFAULT_SECRET = "dev-secret-key-change-in-production-1234567890abcdef"
 
 
 class Settings(BaseSettings):
-    secret_key: str = "dev-secret-key-change-in-production-1234567890abcdef"
+    secret_key: str = _DEFAULT_SECRET
+
+    @model_validator(mode="after")
+    def _reject_default_secret(self) -> "Settings":
+        if self.secret_key == _DEFAULT_SECRET:
+            raise ValueError(
+                "SECRET_KEY is set to the insecure default value. "
+                "Set a strong SECRET_KEY in your .env file before starting the server."
+            )
+        return self
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/trinity_dev"
     redis_url: str = "redis://localhost:6379/0"
     django_service_url: str = "http://localhost:8000"

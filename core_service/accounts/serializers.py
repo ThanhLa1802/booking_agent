@@ -1,8 +1,8 @@
-from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 from .models import UserProfile, UserRole
 
 
@@ -60,6 +60,8 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
             user_obj = User.objects.get(email=email)
         except User.DoesNotExist:
             raise serializers.ValidationError({"email": "Không tìm thấy tài khoản với email này."})
+        except User.MultipleObjectsReturned:
+            raise serializers.ValidationError({"email": "Có nhiều tài khoản với email này. Vui lòng liên hệ hỗ trợ."})
         attrs[self.username_field] = user_obj.username
         data = super().validate(attrs)
         # Include basic user info so frontend can hydrate the store
