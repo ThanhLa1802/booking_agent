@@ -34,6 +34,10 @@ coverage.xml
 !.env.example
 !.env.*.example
 
+# Local account/credential notes
+ACCOUNTS.local.md
+*.local.md
+
 # Node / React
 node_modules/
 frontend/dist/

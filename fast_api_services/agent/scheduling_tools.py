@@ -87,18 +87,21 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
                 available_date=parsed_date,
                 style=style,
             )
-            lines = []
+            lines = [
+                "| ID | Tên | Chuyên môn | Max/ngày | Đã đặt hôm nay |",
+                "|----|-----|------------|----------|----------------|",
+            ]
             for e in examiners:
                 load = 0
                 if parsed_date:
                     load = await get_examiner_daily_load(db, e.id, parsed_date)
                 specs = ", ".join(e.specialization_names) or "—"
                 lines.append(
-                    f"[{e.id}] {e.name} | {specs} | "
-                    f"Max/day: {e.max_exams_per_day} | Booked today: {load}"
+                    f"| {e.id} | {e.name} | {specs} | "
+                    f"{e.max_exams_per_day} | {load} |"
                 )
 
-        if not lines:
+        if len(lines) <= 2:
             return "No available examiners found."
         return "\n".join(lines)
 

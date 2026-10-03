@@ -22,6 +22,7 @@ class TaskType(str, Enum):
     ASSIGN_EXAMINER = "assign_examiner"
     VIEW_CALENDAR = "view_calendar"
     VIEW_EXAMINER_SCHEDULE = "view_examiner_schedule"
+    LIST_EXAMINERS = "list_examiners"
     RESCHEDULE = "reschedule"
     BATCH_ASSIGN = "batch_assign"
     GENERAL = "general"
@@ -34,13 +35,20 @@ class BookingState(TypedDict):
     user_role: str          # "STUDENT" | "PARENT"
 
 
+class ExaminerState(TypedDict):
+    """State for the read-only reviewer agent (examiners)."""
+
+    messages: Annotated[list, add_messages]
+    user_role: str          # "EXAMINER"
+
+
 class SchedulingState(TypedDict):
     """State for the scheduling-focused agent (center admins)."""
 
     messages: Annotated[list, add_messages]
     user_role: str          # "CENTER_ADMIN"
     # ── scheduling task context ──────────────────────────────────────────────
-    task_type: str          # "assign_examiner" | "view_calendar" | "reschedule" | "batch_assign" | "general"
+    task_type: str          # "assign_examiner" | "view_calendar" | "view_examiner_schedule" | "list_examiners" | "reschedule" | "batch_assign" | "general"
     proposal: Optional[dict]   # structured proposal waiting for human confirmation
     confirmed: bool            # True once the user has explicitly confirmed the proposal
     assignment_task_id: Optional[str]   # Celery task_id for batch schedule plans

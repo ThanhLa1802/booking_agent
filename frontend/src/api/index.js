@@ -14,6 +14,9 @@ export const getCourses = (params) =>
 export const getSlots = (params) =>
     apiClient.get('/api/catalog/slots', { params })
 
+export const getInstruments = (params) =>
+    apiClient.get('/api/catalog/instruments', { params })
+
 // Bookings — FastAPI reads
 export const getMyBookings = () => apiClient.get('/api/bookings')
 
@@ -26,6 +29,10 @@ export const getSchedulingCalendar = (params) =>
 export const getSchedulingExaminers = (params) =>
     apiClient.get('/api/scheduling/examiners/', { params })
 
+// Create an examiner (optionally with a login account) — proxied to Django
+export const createExaminer = (payload) =>
+    apiClient.post('/api/scheduling/examiners/', payload)
+
 export const suggestExaminers = (slotId) =>
     apiClient.get(`/api/scheduling/slots/${slotId}/suggest-examiners/`)
 
@@ -34,6 +41,10 @@ export const assignExaminer = (slotId, examinerId) =>
         examiner_id: examinerId,
         confirm: true,
     })
+
+// Examiner self-service — FastAPI (EXAMINER only, own schedule)
+export const getMyExaminerSchedule = (params) =>
+    apiClient.get('/api/scheduling/me/schedule/', { params })
 
 // Agent — FastAPI SSE (returns raw fetch, not axios, for streaming)
 export const createChatStream = (message, sessionId, accessToken) => {

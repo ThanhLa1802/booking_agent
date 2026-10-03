@@ -128,8 +128,10 @@ def _make_classify_node(llm):
                 "Classify the following CENTER_ADMIN message into exactly one of these task types:\n"
                 "  assign_examiner       — assigning or changing which examiner covers a single slot\n"
                 "  view_calendar         — viewing the exam schedule or calendar of the center\n"
-                "  view_examiner_schedule — viewing the schedule/exams of a SPECIFIC examiner "
-                "(keywords: giáo viên, giám khảo, examiner, teacher, 'lịch của ...')\n"
+                "  list_examiners        — listing the center's examiners/teachers, NO specific person "
+                "(keywords: 'danh sách giám khảo', 'có những giám khảo nào', 'liệt kê giáo viên')\n"
+                "  view_examiner_schedule — viewing the schedule/exams of a SPECIFIC examiner, i.e. the "
+                "message names or gives an ID for one person ('lịch của giám khảo ...', 'giám khảo ID 2')\n"
                 "  reschedule            — rescheduling a student\'s booking to a new slot\n"
                 "  batch_assign          — auto-schedule / assign examiners for a full week or month\n"
                 "  general               — anything else (questions, greetings, etc.)\n\n"
@@ -197,6 +199,12 @@ def _make_fetch_node(tools: list):
                 if date_to:
                     cal_args["date_to"] = date_to
                 fetched_text = await tool.ainvoke(cal_args)
+
+        elif task_type == "list_examiners":
+            # Plain listing of the center's examiners — no specific person, no prompt.
+            tool = tool_map.get("list_examiners")
+            if tool:
+                fetched_text = await tool.ainvoke({})
 
         elif task_type == "view_examiner_schedule":
             # A specific examiner's schedule. Without an ID, list examiners to pick from.
@@ -308,7 +316,7 @@ def _make_propose_node(llm, tools: list):
         task_type = state.get("task_type", "general")
 
         # For read-only views: present fetched data verbatim; use LLM only for fallback/general
-        if task_type in ("view_calendar", "view_examiner_schedule", "general"):
+        if task_type in ("view_calendar", "view_examiner_schedule", "list_examiners", "general"):
             # Extract [FETCH] content directly — avoid LLM reformatting real data
             fetch_messages = [
                 m for m in state["messages"]

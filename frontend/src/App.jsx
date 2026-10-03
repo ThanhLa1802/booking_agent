@@ -12,7 +12,9 @@ import ChatPage from './pages/ChatPage'
 import BookingsPage from './pages/BookingsPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
+import ExaminerRoute from './components/ExaminerRoute'
 import SchedulingPage from './pages/SchedulingPage'
+import MySchedulePage from './pages/MySchedulePage'
 import ScheduleTaskPoller from './components/ScheduleTaskPoller'
 
 function TokenRefreshGate({ children }) {
@@ -75,6 +77,14 @@ export default function App() {
                 <AdminRoute>
                   <SchedulingPage />
                 </AdminRoute>
+              }
+            />
+            <Route
+              path="/my-schedule"
+              element={
+                <ExaminerRoute>
+                  <MySchedulePage />
+                </ExaminerRoute>
               }
             />
             <Route path="/" element={<Navigate to="/chat" replace />} />

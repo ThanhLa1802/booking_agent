@@ -37,6 +37,7 @@ import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import Navbar from '../components/Navbar'
+import AddExaminerDialog from '../components/AddExaminerDialog'
 import {
   assignExaminer,
   getSchedulingCalendar,
@@ -85,6 +86,9 @@ export default function SchedulingPage() {
   const [suggLoading, setSuggLoading] = useState(false)
   const [selectedExaminer, setSelectedExaminer] = useState(null)
   const [confirming, setConfirming] = useState(false)
+
+  // Add-examiner dialog state
+  const [addOpen, setAddOpen] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -170,6 +174,13 @@ export default function SchedulingPage() {
               Phân công giám khảo cho các ca thi.
             </Typography>
           </Box>
+          <Button
+            variant="contained"
+            startIcon={<PersonAddOutlinedIcon />}
+            onClick={() => setAddOpen(true)}
+          >
+            Thêm giám khảo
+          </Button>
           <Tooltip title="Làm mới">
             <IconButton onClick={fetchData} disabled={loading} size="small">
               <RefreshIcon />
@@ -528,6 +539,21 @@ export default function SchedulingPage() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* ── Add Examiner Dialog ───────────────────────────────── */}
+        <AddExaminerDialog
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onCreated={(examiner) => {
+            setSuccess(
+              examiner?.has_login
+                ? `Đã thêm giám khảo ${examiner.name} và tạo tài khoản đăng nhập.`
+                : `Đã thêm giám khảo ${examiner?.name || ''}.`
+            )
+            setActiveTab(1)
+            fetchData()
+          }}
+        />
       </Container>
     </>
   )

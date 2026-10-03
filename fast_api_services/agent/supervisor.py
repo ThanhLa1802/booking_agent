@@ -4,10 +4,12 @@ SupervisorGraph — top-level LangGraph router.
 Routes each conversation turn to the appropriate sub-graph based on user_role:
     CENTER_ADMIN → SchedulingGraph
     STUDENT / PARENT → BookingGraph
+    EXAMINER → ExaminerGraph (read-only own schedule)
 
 Graph topology:
     START → route_node → (CENTER_ADMIN) → scheduling_subgraph → END
                        → (STUDENT/PARENT) → booking_subgraph  → END
+                       → (EXAMINER)       → examiner_subgraph → END
 
 The checkpointer stores state in Redis keyed by `thread_id = user_id`,
 enabling human-in-the-loop resume for SchedulingGraph (the graph can
@@ -20,7 +22,7 @@ from typing import Annotated, Optional
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from .state import BookingState, SchedulingState
+from .state import BookingState, ExaminerState, SchedulingState
 
 
 class SupervisorState(TypedDict):
@@ -39,6 +41,8 @@ def _route_by_role(state: dict) -> str:
     role = state.get("user_role", "STUDENT")
     if role == "CENTER_ADMIN":
         return "scheduling_subgraph"
+    if role == "EXAMINER":
+        return "examiner_subgraph"
     return "booking_subgraph"
 
 
@@ -50,6 +54,7 @@ def create_supervisor_graph(
     llm,
     chat_history: list,
     checkpointer=None,
+    examiner_tools: list | None = None,
 ):
     """
     Build and compile the SupervisorGraph — top-level router for multi-agent flows.
@@ -57,6 +62,7 @@ def create_supervisor_graph(
     Routes user requests to appropriate sub-graph based on user_role:
       - CENTER_ADMIN → SchedulingGraph (examiner assignment, calendar management)
       - STUDENT / PARENT → BookingGraph (exam booking, cancellation, rescheduling)
+      - EXAMINER → ExaminerGraph (read-only view of the examiner's own schedule)
 
     Args:
         booking_tools: LangChain tools for BookingGraph (student/parent agent).
@@ -67,14 +73,16 @@ def create_supervisor_graph(
         chat_history: Pre-loaded conversation history (from Redis) for context.
         checkpointer: Optional LangGraph Redis checkpointer for state persistence
                      (required only for admin confirmation gate; None for students).
+        examiner_tools: LangChain read-only tools for ExaminerGraph.
 
     Returns:
         Compiled LangGraph CompiledGraph ready for ainvoke() or astream_events().
 
     State flow:
-        START → _route_by_role() 
-                  ├─ (CENTER_ADMIN) → scheduling_subgraph → END
-                  └─ (STUDENT/PARENT) → booking_subgraph → END
+        START → _route_by_role()
+                  ├─ (CENTER_ADMIN)    → scheduling_subgraph → END
+                  ├─ (STUDENT/PARENT)  → booking_subgraph    → END
+                  └─ (EXAMINER)        → examiner_subgraph   → END
 
     Note:
         Sub-graphs are compiled separately and invoked as async nodes. State from
@@ -84,11 +92,13 @@ def create_supervisor_graph(
     from langgraph.graph import END, START
 
     from .booking_graph import create_booking_graph
+    from .examiner_graph import create_examiner_graph
     from .scheduling_graph import create_scheduling_graph
 
     # ── build sub-graphs ──────────────────────────────────────────────────────
     booking_graph = create_booking_graph(booking_tools, llm, chat_history)
     scheduling_graph = create_scheduling_graph(scheduling_tools, llm, checkpointer)
+    examiner_graph = create_examiner_graph(examiner_tools or [], llm, chat_history)
 
     # ── supervisor state: superset of both sub-graph states ──────────────────
     # We use a plain dict-based state to be role-agnostic at the router level.
@@ -132,15 +142,27 @@ def create_supervisor_graph(
             "assignment_task_id": result.get("assignment_task_id"),
         }
 
+    async def examiner_subgraph_node(state: dict) -> dict:
+        """
+        Invoke ExaminerGraph for EXAMINER users.
+        Maps: state['messages'] + state['user_role'] → ExaminerState.
+        """
+        result = await examiner_graph.ainvoke(
+            ExaminerState(messages=state["messages"], user_role=state["user_role"])
+        )
+        return {"messages": result["messages"], "user_role": state["user_role"]}
+
     # ── supervisor graph ──────────────────────────────────────────────────────
     from langgraph.graph import StateGraph as SG
 
     builder = SG(SupervisorState)
     builder.add_node("booking_subgraph", booking_subgraph_node)
     builder.add_node("scheduling_subgraph", scheduling_subgraph_node)
+    builder.add_node("examiner_subgraph", examiner_subgraph_node)
 
     builder.add_conditional_edges(START, _route_by_role)
     builder.add_edge("booking_subgraph", END)
     builder.add_edge("scheduling_subgraph", END)
+    builder.add_edge("examiner_subgraph", END)
 
     return builder.compile(checkpointer=checkpointer)

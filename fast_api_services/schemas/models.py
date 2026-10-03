@@ -225,3 +225,14 @@ class RescheduleBookingIn(BaseModel):
 class AssignExaminerIn(BaseModel):
     examiner_id: int
     confirm: bool = False
+
+
+class ExaminerCreateIn(BaseModel):
+    """Create an examiner at the admin's center. `password` optionally provisions
+    a linked EXAMINER login account (min 8 chars)."""
+    name: str
+    email: str
+    phone: str = ""
+    specializations: list[int] = []
+    max_exams_per_day: int = 8
+    password: Optional[str] = None

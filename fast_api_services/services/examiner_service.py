@@ -347,6 +347,40 @@ async def get_examiner_by_id(
     return _row_to_examiner(row) if row else None
 
 
+async def get_examiner_by_user_id(
+    db: AsyncSession,
+    user_id: int,
+) -> Optional[ExaminerOut]:
+    """Return the examiner linked to a login account, or None if unlinked."""
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT
+                    e.id,
+                    e.center_id,
+                    ec.name  AS center_name,
+                    ec.city  AS center_city,
+                    e.name,
+                    e.email,
+                    e.phone,
+                    e.max_exams_per_day,
+                    e.is_active,
+                    STRING_AGG(CONCAT(i.name, ' (', i.style, ')'), ', ') AS specialization_names
+                FROM centers_examiner e
+                JOIN centers_examcenter ec ON ec.id = e.center_id
+                LEFT JOIN centers_examiner_specializations es ON es.examiner_id = e.id
+                LEFT JOIN catalog_instrument i ON i.id = es.instrument_id
+                WHERE e.user_id = :uid
+                GROUP BY e.id, ec.name, ec.city
+                """
+            ),
+            {"uid": user_id},
+        )
+    ).mappings().first()
+    return _row_to_examiner(row) if row else None
+
+
 async def get_examiner_schedule(
     db: AsyncSession,
     examiner_id: int,

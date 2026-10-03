@@ -1,6 +1,7 @@
 import { AppBar, Box, Button, Chip, IconButton, Toolbar, Tooltip, Typography } from '@mui/material'
 import MusicNoteOutlinedIcon from '@mui/icons-material/MusicNoteOutlined'
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
+import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined'
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
@@ -33,6 +34,8 @@ export default function Navbar() {
   const mode = useUiStore((s) => s.mode)
   const toggleMode = useUiStore((s) => s.toggleMode)
   const isAdmin = user?.role === 'CENTER_ADMIN'
+  const isExaminer = user?.role === 'EXAMINER'
+  const home = isAdmin ? '/scheduling' : isExaminer ? '/my-schedule' : '/catalog'
 
   const handleLogout = () => {
     logout()
@@ -45,7 +48,7 @@ export default function Navbar() {
         {/* Wordmark */}
         <Box
           component={Link}
-          to={isAdmin ? '/scheduling' : '/catalog'}
+          to={home}
           sx={{
             display: 'flex',
             alignItems: 'center',
@@ -92,6 +95,15 @@ export default function Navbar() {
             <>
               <NavLink to="/scheduling" icon={<AdminPanelSettingsOutlinedIcon fontSize="small" />}>
                 Lịch thi
+              </NavLink>
+              <NavLink to="/chat" icon={<SmartToyOutlinedIcon fontSize="small" />}>
+                Trợ lý
+              </NavLink>
+            </>
+          ) : isExaminer ? (
+            <>
+              <NavLink to="/my-schedule" icon={<CalendarMonthOutlinedIcon fontSize="small" />}>
+                Lịch của tôi
               </NavLink>
               <NavLink to="/chat" icon={<SmartToyOutlinedIcon fontSize="small" />}>
                 Trợ lý

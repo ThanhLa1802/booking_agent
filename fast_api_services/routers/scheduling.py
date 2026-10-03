@@ -28,13 +28,17 @@ from fast_api_services.database import get_db
 from fast_api_services.schemas.models import (
     AssignExaminerIn,
     ExaminerAvailabilityOut,
+    ExaminerCreateIn,
     ExaminerOut,
+    ExaminerScheduleOut,
     ExamSlotScheduleOut,
     RescheduleBookingIn,
 )
 from fast_api_services.services.examiner_service import (
     get_exam_calendar,
+    get_examiner_by_user_id,
     get_examiner_daily_load,
+    get_examiner_schedule,
     list_examiners,
     suggest_examiners_for_slot,
 )
@@ -45,8 +49,8 @@ router = APIRouter(prefix="/scheduling", tags=["scheduling"])
 
 # ── auth guard ────────────────────────────────────────────────────────────────
 
-async def _require_center_admin(current_user=Depends(get_current_user)):
-    """Dependency — raises 403 if caller is not CENTER_ADMIN."""
+async def _load_role(user_id: int) -> Optional[str]:
+    """Return the caller's role from their user profile, or None if missing."""
     from sqlalchemy import text
 
     from fast_api_services.database import get_session_factory
@@ -54,11 +58,15 @@ async def _require_center_admin(current_user=Depends(get_current_user)):
     async with get_session_factory()() as db:
         row = await db.execute(
             text("SELECT role FROM accounts_userprofile WHERE user_id = :uid"),
-            {"uid": current_user.user_id},
+            {"uid": user_id},
         )
         profile = row.fetchone()
+    return profile.role if profile else None
 
-    if not profile or profile.role != "CENTER_ADMIN":
+
+async def _require_center_admin(current_user=Depends(get_current_user)):
+    """Dependency — raises 403 if caller is not CENTER_ADMIN."""
+    if await _load_role(current_user.user_id) != "CENTER_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only CENTER_ADMIN users can access scheduling endpoints.",
@@ -66,7 +74,37 @@ async def _require_center_admin(current_user=Depends(get_current_user)):
     return current_user
 
 
+async def _require_examiner(current_user=Depends(get_current_user)):
+    """Dependency — raises 403 if caller is not EXAMINER."""
+    if await _load_role(current_user.user_id) != "EXAMINER":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only EXAMINER users can access their own schedule.",
+        )
+    return current_user
+
+
 # ── read endpoints ────────────────────────────────────────────────────────────
+
+@router.get("/me/schedule/", response_model=ExaminerScheduleOut)
+async def get_my_schedule_endpoint(
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(_require_examiner),
+):
+    """
+    Return the logged-in examiner's OWN schedule. The examiner is resolved
+    server-side from the JWT — no examiner_id is ever accepted from the client.
+    """
+    examiner = await get_examiner_by_user_id(db, current_user.user_id)
+    if examiner is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tài khoản của bạn chưa được liên kết với hồ sơ giám khảo.",
+        )
+    return await get_examiner_schedule(db, examiner.id, date_from, date_to)
+
 
 @router.get("/examiners/", response_model=list[ExaminerOut])
 async def list_examiners_endpoint(
@@ -118,6 +156,30 @@ async def get_calendar_endpoint(
 
 
 # ── write endpoints (proxied to Django) ──────────────────────────────────────
+
+@router.post("/examiners/", status_code=status.HTTP_201_CREATED)
+async def create_examiner_endpoint(
+    payload: ExaminerCreateIn,
+    current_user=Depends(_require_center_admin),
+):
+    """
+    Create an examiner at the admin's center (proxied to Django).
+    If `password` is provided, a linked EXAMINER login account is provisioned.
+    """
+    settings = get_settings()
+    body = payload.model_dump()
+    if not body.get("password"):
+        body.pop("password", None)
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"{settings.django_service_url}/api/centers/examiners/",
+            json=body,
+            headers={"Authorization": f"Bearer {current_user.raw_token}"},
+        )
+    if resp.status_code in (200, 201):
+        return resp.json()
+    raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
+
 
 @router.post("/slots/{slot_id}/assign-examiner/")
 async def assign_examiner_endpoint(

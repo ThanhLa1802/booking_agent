@@ -96,15 +96,18 @@ async def chat(
         # ── resolve user_role from DB ──────────────────────────────────────
         user_role = "STUDENT"
         center_id = 0
+        examiner_id: Optional[int] = None
         try:
             async with session_factory() as db:
                 from sqlalchemy import text
-                # Query user profile to get role and find associated center
+                # Query user profile to get role, associated center and linked examiner
                 query = text("""
-                    SELECT up.role, ec.id AS center_id
+                    SELECT up.role, ec.id AS center_id, ex.id AS examiner_id
                     FROM accounts_userprofile up
                     LEFT JOIN centers_examcenter ec 
                         ON ec.admin_user_id = up.user_id
+                    LEFT JOIN centers_examiner ex
+                        ON ex.user_id = up.user_id
                     WHERE up.user_id = :uid
                 """)
                 result = await db.execute(query, {"uid": user_id})
@@ -112,6 +115,7 @@ async def chat(
                 if profile:
                     role_val = profile[0]       # profile.role
                     center_id = profile[1] or 0 # profile.center_id
+                    examiner_id = profile[2]    # linked examiner id (EXAMINER only)
                     # Use explicit role if set; if admin center but no explicit role, mark CENTER_ADMIN
                     user_role = role_val if role_val else (
                         "CENTER_ADMIN" if center_id > 0 else "STUDENT"
@@ -169,11 +173,28 @@ async def chat(
             + make_reschedule_tools(sched_ctx, user_id)
         )
 
+        # ── examiner tools (read-only, own schedule only) ──────────────────
+        examiner_tools: list = []
+        if user_role == "EXAMINER":
+            from fast_api_services.agent.examiner_tools import (
+                ExaminerToolContext,
+                make_examiner_tools,
+            )
+
+            examiner_ctx = ExaminerToolContext(
+                session_factory=session_factory,
+                examiner_id=examiner_id,
+                user_id=user_id,
+                redis=redis,
+            )
+            examiner_tools = make_examiner_tools(examiner_ctx)
+
         supervisor = create_supervisor_graph(
             booking_tools=booking_tools,
             scheduling_tools=scheduling_tools,
             llm=llm,
             chat_history=chat_history,
+            examiner_tools=examiner_tools,
         )
 
         from langchain_core.messages import HumanMessage
