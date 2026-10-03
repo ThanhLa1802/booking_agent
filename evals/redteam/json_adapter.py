@@ -35,7 +35,11 @@ class Handler(BaseHTTPRequestHandler):
         result = chat(message)
 
         body = json.dumps(
-            {"text": result.text, "write_tools": result.write_tools}
+            {
+                "text": result.text,
+                "write_attempts": result.write_attempts,
+                "write_executions": result.write_executions,
+            }
         ).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

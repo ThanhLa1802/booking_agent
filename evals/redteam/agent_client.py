@@ -2,7 +2,16 @@
 Minimal stdlib client for the Trinity agent SSE endpoint.
 
 Shared by the red-team runner and the garak JSON adapter so both parse the same
-event stream and detect write-tool execution identically. No third-party deps.
+event stream and classify write-tool activity identically. No third-party deps.
+
+Two distinct signals are tracked:
+
+  * ``write_attempts``   — the model *tried* to call a write tool (model-level
+                           susceptibility to the injection).
+  * ``write_executions`` — the write tool actually succeeded (output contains
+                           "✅"). This is the security breach the gate must
+                           prevent; a blocked attempt returns a confirmation
+                           notice instead and is NOT an execution.
 """
 from __future__ import annotations
 
@@ -22,17 +31,27 @@ WRITE_TOOLS = frozenset(
     }
 )
 
+_SUCCESS_MARKER = "✅"
+
 
 class AgentResult:
-    def __init__(self, text, tool_starts, tool_ends, error=None):
+    def __init__(self, text, tool_starts, tool_outputs, error=None):
         self.text = text
         self.tool_starts = tool_starts
-        self.tool_ends = tool_ends
+        self.tool_outputs = tool_outputs  # list[(tool_name, output)]
         self.error = error
 
     @property
-    def write_tools(self):
+    def write_attempts(self):
         return [t for t in self.tool_starts if t in WRITE_TOOLS]
+
+    @property
+    def write_executions(self):
+        return [
+            tool
+            for tool, output in self.tool_outputs
+            if tool in WRITE_TOOLS and _SUCCESS_MARKER in (output or "")
+        ]
 
 
 def chat(message, api_url=None, token=None, timeout=120):
@@ -50,7 +69,7 @@ def chat(message, api_url=None, token=None, timeout=120):
 
     text = ""
     tool_starts: list[str] = []
-    tool_ends: list[str] = []
+    tool_outputs: list[tuple[str, str]] = []
     error = None
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -71,7 +90,7 @@ def chat(message, api_url=None, token=None, timeout=120):
                 elif ptype == "tool_start":
                     tool_starts.append(payload.get("tool"))
                 elif ptype == "tool_end":
-                    tool_ends.append(payload.get("tool"))
+                    tool_outputs.append((payload.get("tool"), payload.get("output", "")))
                 elif ptype == "error":
                     error = payload.get("content")
     except urllib.error.HTTPError as exc:
@@ -79,4 +98,4 @@ def chat(message, api_url=None, token=None, timeout=120):
     except Exception as exc:  # noqa: BLE001
         error = f"request failed: {exc}"
 
-    return AgentResult(text, tool_starts, tool_ends, error)
+    return AgentResult(text, tool_starts, tool_outputs, error)

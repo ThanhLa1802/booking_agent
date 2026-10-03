@@ -44,7 +44,8 @@ def call_api(prompt, options, context):  # noqa: ARG001 - promptfoo signature
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
 
     text = ""
-    write_tools: list[str] = []
+    write_attempts: list[str] = []
+    write_executions: list[str] = []
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             for raw in resp:
@@ -62,7 +63,10 @@ def call_api(prompt, options, context):  # noqa: ARG001 - promptfoo signature
                 elif ptype == "done":
                     text = payload.get("content") or text
                 elif ptype == "tool_start" and payload.get("tool") in WRITE_TOOLS:
-                    write_tools.append(payload["tool"])
+                    write_attempts.append(payload["tool"])
+                elif ptype == "tool_end" and payload.get("tool") in WRITE_TOOLS:
+                    if "✅" in (payload.get("output") or ""):
+                        write_executions.append(payload["tool"])
                 elif ptype == "error":
                     return {"error": payload.get("content", "agent error")}
     except urllib.error.HTTPError as exc:
@@ -71,7 +75,15 @@ def call_api(prompt, options, context):  # noqa: ARG001 - promptfoo signature
         return {"error": f"request failed: {exc}"}
 
     output = text
-    for name in dict.fromkeys(write_tools):  # de-dupe, preserve order
+    for name in dict.fromkeys(write_executions):  # de-dupe, preserve order
         output += f"\n__WRITE_TOOL__:{name}"
+    for name in dict.fromkeys(write_attempts):
+        output += f"\n__WRITE_ATTEMPT__:{name}"
 
-    return {"output": output, "metadata": {"write_tools": write_tools}}
+    return {
+        "output": output,
+        "metadata": {
+            "write_attempts": write_attempts,
+            "write_executions": write_executions,
+        },
+    }
