@@ -5,7 +5,10 @@ from django.db import models
 class UserRole(models.TextChoices):
     STUDENT = "STUDENT", "Student"
     PARENT = "PARENT", "Parent"
+    TEACHER = "TEACHER", "Teacher"
+    EXAMINER = "EXAMINER", "Examiner"
     CENTER_ADMIN = "CENTER_ADMIN", "Center Admin"
+    REGIONAL_ADMIN = "REGIONAL_ADMIN", "Regional Admin"
 
 
 class UserProfile(models.Model):

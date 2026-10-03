@@ -33,6 +33,14 @@ class Examiner(models.Model):
     center = models.ForeignKey(
         ExamCenter, on_delete=models.CASCADE, related_name="examiners"
     )
+    # Optional login account for the examiner (mock — not wired to auth flows yet).
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="examiner_profile",
+    )
     name = models.CharField(max_length=200)
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20, blank=True)

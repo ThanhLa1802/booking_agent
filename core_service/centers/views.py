@@ -2,8 +2,10 @@ import json
 
 import redis as _redis
 from accounts.models import UserProfile, UserRole
+from auditing.services import log_action
 from django.conf import settings
 from django.db import models, transaction
+from django.db.models import Sum
 from rest_framework import generics, serializers, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -180,6 +182,22 @@ class AssignExaminerView(APIView):
 
         slot.examiner = examiner
         slot.save(update_fields=["examiner"])
+
+        try:
+            from notifications.services import notify_examiner_assigned
+
+            notify_examiner_assigned(examiner, slot)
+        except Exception:
+            pass
+
+        log_action(
+            actor=request.user,
+            action="examiner.assigned",
+            entity_type="ExamSlot",
+            entity_id=slot.pk,
+            metadata={"examiner_id": examiner.pk},
+            request=request,
+        )
         return Response(ExamSlotSerializer(slot).data, status=status.HTTP_200_OK)
 
 
@@ -343,6 +361,7 @@ class BatchScheduleConfirmView(APIView):
         # changed since it was computed.
         assigned_count = 0
         skipped: list[dict] = []
+        assigned_pairs: list[tuple] = []
         with transaction.atomic():
             for item in plan:
                 slot = (
@@ -383,6 +402,25 @@ class BatchScheduleConfirmView(APIView):
                 slot.examiner = examiner
                 slot.save(update_fields=["examiner"])
                 assigned_count += 1
+                assigned_pairs.append((examiner, slot))
+
+        # Notify assigned examiners (MOCK) — best-effort, after commit.
+        try:
+            from notifications.services import notify_examiner_assigned
+
+            for examiner, slot in assigned_pairs:
+                notify_examiner_assigned(examiner, slot)
+        except Exception:
+            pass
+
+        log_action(
+            actor=request.user,
+            action="schedule.committed",
+            entity_type="ScheduleTask",
+            entity_id=task_id,
+            metadata={"assigned_count": assigned_count, "skipped": len(skipped)},
+            request=request,
+        )
 
         # Update Redis record to COMMITTED
         from datetime import datetime
@@ -395,5 +433,75 @@ class BatchScheduleConfirmView(APIView):
 
         return Response(
             {"assigned_count": assigned_count, "skipped": skipped},
+            status=status.HTTP_200_OK,
+        )
+
+
+# ── CENTER_ADMIN — Reports ────────────────────────────────────────────────────
+
+
+class CenterReportView(APIView):
+    """
+    GET /api/centers/reports/summary/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+
+    Mock analytics for the admin's center: booking counts, revenue (paid
+    bookings only), slot utilisation and active examiner count.
+    """
+
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        if not _is_center_admin(request.user):
+            return Response(
+                {"detail": "Only CENTER_ADMIN can view reports."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            center = request.user.managed_center
+        except ExamCenter.DoesNotExist:
+            return Response(
+                {"detail": "Your account is not linked to any exam center."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from bookings.models import Booking, BookingStatus, PaymentStatus
+
+        slots = ExamSlot.objects.filter(center=center)
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        if date_from:
+            slots = slots.filter(exam_date__gte=date_from)
+        if date_to:
+            slots = slots.filter(exam_date__lte=date_to)
+
+        bookings = Booking.objects.filter(slot__center=center)
+        if date_from:
+            bookings = bookings.filter(slot__exam_date__gte=date_from)
+        if date_to:
+            bookings = bookings.filter(slot__exam_date__lte=date_to)
+
+        paid = bookings.filter(payment_status=PaymentStatus.PAID)
+        revenue = paid.aggregate(total=Sum("price"))["total"] or 0
+
+        return Response(
+            {
+                "center_id": center.pk,
+                "center_name": center.name,
+                "slots_total": slots.count(),
+                "slots_assigned": slots.filter(examiner__isnull=False).count(),
+                "slots_unassigned": slots.filter(examiner__isnull=True).count(),
+                "examiners_active": Examiner.objects.filter(
+                    center=center, is_active=True
+                ).count(),
+                "bookings_total": bookings.count(),
+                "bookings_paid": paid.count(),
+                "bookings_cancelled": bookings.filter(
+                    status=BookingStatus.CANCELLED
+                ).count(),
+                "revenue_paid": revenue,
+                "cancellations": bookings.filter(
+                    status=BookingStatus.CANCELLED
+                ).count(),
+            },
             status=status.HTTP_200_OK,
         )

@@ -31,6 +31,8 @@ INSTALLED_APPS = [
     "catalog",
     "centers",
     "bookings",
+    "notifications",
+    "auditing",
 ]
 
 MIDDLEWARE = [
@@ -142,6 +144,23 @@ AXES_LOCKOUT_CALLABLE = "accounts.views.axes_lockout_response"
 # ── Redis ─────────────────────────────────────────────────────────────────────
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
+# ── Bookings: payment / holds / policy (MOCK) ─────────────────────────────────
+PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", default="MOCK")
+# How long an unpaid booking keeps its seat reserved before auto-release.
+BOOKING_HOLD_TTL_SECONDS = env.int("BOOKING_HOLD_TTL_SECONDS", default=900)
+# Policy values are placeholders pending the real Trinity VN policy.
+CANCEL_FULL_REFUND_DAYS = env.int("CANCEL_FULL_REFUND_DAYS", default=30)
+CANCEL_PARTIAL_REFUND_DAYS = env.int("CANCEL_PARTIAL_REFUND_DAYS", default=7)
+CANCEL_PARTIAL_REFUND_PCT = env.int("CANCEL_PARTIAL_REFUND_PCT", default=50)
+RESCHEDULE_DEADLINE_DAYS = env.int("RESCHEDULE_DEADLINE_DAYS", default=7)
+MAX_RESCHEDULES = env.int("MAX_RESCHEDULES", default=2)
+# When False, cancellation/reschedule windows are not enforced (tests/dev).
+BOOKING_POLICY_ENFORCED = env.bool("BOOKING_POLICY_ENFORCED", default=True)
+
+# ── Notifications (MOCK) ──────────────────────────────────────────────────────
+NOTIFICATIONS_ENABLED = env.bool("NOTIFICATIONS_ENABLED", default=True)
+NOTIFICATIONS_DISPATCH_ENABLED = env.bool("NOTIFICATIONS_DISPATCH_ENABLED", default=True)
+
 # ── Celery ────────────────────────────────────────────────────────────────────
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/1")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/2")
@@ -152,3 +171,20 @@ CELERY_TASK_SERIALIZER = "json"
 # (and the docs' run commands) listen on "default" — tasks would never run.
 CELERY_TASK_DEFAULT_QUEUE = "default"
 CELERY_TIMEZONE = TIME_ZONE
+
+# ── Celery beat schedule ──────────────────────────────────────────────────────
+CELERY_BEAT_SCHEDULE = {
+    "expire-unpaid-hold": {
+        "task": "bookings.tasks.expire_unpaid_holds",
+        "schedule": timedelta(minutes=5),
+    },
+    "send-exam-reminders": {
+        "task": "notifications.tasks.send_exam_reminders",
+        "schedule": timedelta(hours=24),
+        "kwargs": {"days_ahead": 3},
+    },
+    "dispatch-queued-notifications": {
+        "task": "notifications.tasks.dispatch_queued",
+        "schedule": timedelta(minutes=10),
+    },
+}

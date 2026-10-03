@@ -17,3 +17,8 @@ AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
 
 # Speed up password hashing in tests
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+# Don't enforce policy windows in tests (fixtures use fixed past/future dates)
+# and never touch the Celery broker from tests.
+BOOKING_POLICY_ENFORCED = False
+NOTIFICATIONS_DISPATCH_ENABLED = False

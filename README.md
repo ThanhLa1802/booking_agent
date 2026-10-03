@@ -149,21 +149,28 @@ Admin gõ "xếp lịch thi tháng 5"  →  FastAPI nhận yêu cầu
 |------|-------|--------|
 | `search_exam_docs` | Tìm kiếm trong syllabus, chính sách, FAQ qua ChromaDB | Đọc |
 | `list_courses` | Danh sách môn thi, cấp độ, học phí | Đọc |
-| `list_available_slots` | Slot còn chỗ trống (Redis-cached) | Đọc |
+| `list_available_slots` | Slot còn chỗ trống | Đọc |
 | `get_booking_detail` | Chi tiết một booking | Đọc |
 | `list_my_bookings` | Lịch sử thi của học sinh | Đọc |
-| `create_booking` | **Đặt lịch thi** — yêu cầu `confirm=True` | ⚠️ Ghi |
-| `cancel_booking` | **Hủy lịch thi** — yêu cầu `confirm=True` | ⚠️ Ghi |
+| `suggest_slots_for_reschedule` | Gợi ý slot thay thế cho một booking | Đọc |
+| `create_booking` | **Đặt lịch thi** — xác nhận server-side bắt buộc | ⚠️ Ghi |
+| `cancel_booking` | **Hủy lịch thi** — xác nhận server-side bắt buộc | ⚠️ Ghi |
+| `pay_booking` | **Thanh toán (MOCK)** — xác nhận server-side bắt buộc | ⚠️ Ghi |
+| `reschedule_booking` | **Đổi lịch thi** — xác nhận server-side bắt buộc | ⚠️ Ghi |
 
 ### Công cụ — CENTER_ADMIN (Scheduling Agent)
 
 | Tool | Mô tả | Ghi/Đọc |
 |------|-------|--------|
-| `list_examiners` | Danh sách giám khảo của trung tâm | Đọc |
-| `view_exam_calendar` | Xem lịch thi theo khoảng ngày | Đọc |
+| `list_examiners` | Danh sách giám khảo của trung tâm (kèm tải trong ngày) | Đọc |
+| `suggest_examiners_for_slot` | Gợi ý giám khảo phù hợp cho một slot | Đọc |
+| `search_available_slots` | Tìm slot trống | Đọc |
+| `get_exam_calendar` | Xem lịch thi theo khoảng ngày | Đọc |
+| `get_examiner_schedule` | Xem lịch riêng của một giám khảo | Đọc |
 | `auto_plan_schedule` | Gọi Celery solver → poll Redis → trả về kế hoạch tối ưu | Đọc |
-| `assign_examiner_to_slot` | Phân công giám khảo vào một slot cụ thể — yêu cầu xác nhận | ⚠️ Ghi |
-| `confirm_schedule_plan` | Lưu toàn bộ kế hoạch đã đề xuất vào DB — yêu cầu xác nhận | ⚠️ Ghi |
+| `assign_examiner_to_slot` | Phân công giám khảo vào một slot — xác nhận server-side | ⚠️ Ghi |
+| `confirm_schedule_plan` | Lưu toàn bộ kế hoạch đã đề xuất vào DB | ⚠️ Ghi |
+| `suggest_slots_for_reschedule` / `reschedule_booking` | Đổi lịch thí sinh | Đọc / ⚠️ Ghi |
 
 ### Luồng xử lý Agent — Student/Parent (ReAct)
 
@@ -227,6 +234,33 @@ Admin gõ "xếp lịch thi tháng 5 2026"
 ```
 
 > **Lưu ý:** Frontend ưu tiên `done.content` để ghi đè nội dung streaming. Điều này đảm bảo thông báo "⏳ Đang xếp lịch..." ban đầu được thay thế hoàn toàn bằng bảng kế hoạch thực tế khi phản hồi đến.
+
+---
+
+## Tính năng MOCK (ghép nối sau)
+
+Các phần dưới đây đã có đủ model/endpoint/flow nhưng **provider thật chưa nối**:
+
+| Nhóm | Trạng thái | Điểm ghép nối |
+|------|-----------|----------------|
+| **Thanh toán** | `MockPaymentGateway` (initiate/confirm/refund), booking có `PENDING_PAYMENT`/`PAID` | `bookings/payments.py` → thay bằng VNPay/MoMo/ZaloPay/Stripe |
+| **Giữ chỗ** | `hold_slot`/`release_slot` Redis TTL + `hold_expires_at` trên Booking | `fast_api_services/services/slot_cache.py` |
+| **Hết hạn chưa thanh toán** | Celery `expire_unpaid_holds` (beat 5 phút) | `bookings/tasks.py` |
+| **Thông báo** | `Notification` model + provider log-only, task gửi + nhắc thi | `notifications/providers.py` → SMTP/Twilio/FCM |
+| **Chính sách hủy/đổi/hoàn** | Hàm thuần trong `bookings/policies.py` (số liệu placeholder) | cập nhật theo policy Trinity VN thật |
+| **Hồ sơ thí sinh** | Thêm field + `CandidateDocument` (upload chỉ lưu `file_ref`) | `bookings/views.py` → storage thật |
+| **Kết quả/chứng chỉ** | `ExamResult` + `Certificate`, endpoint publish | `bookings/views.py` |
+| **Audit log** | `AuditLog` append-only + `log_action()` | `auditing/services.py` |
+| **Vai trò** | Thêm `TEACHER`, `EXAMINER`, `REGIONAL_ADMIN`; `Examiner.user` liên kết login | `accounts/models.py`, `centers/models.py` |
+
+## AI Engineering (P0)
+
+> **Provider LLM mặc định:** `openai` / `gpt-4o-mini` + `text-embedding-3-small` (xem `fast_api_services/.env`). Ollama LLaMA 3.1 8B + `nomic-embed-text` là nhánh local/fallback khi `LLM_PROVIDER=ollama`.
+
+- **Server-side write authorization:** không tin `confirm=True` của LLM. `agent/authorization.py` chỉ cho ghi khi tin nhắn thô của user là xác nhận rõ ràng và khớp hash của `pending_action:{user_id}` ghi ở lượt trước.
+- **Structured intent classification:** `get_classifier_llm()` dùng `with_structured_output(TaskType)` + retry + fallback model; chỉ fallback về parse text nếu provider không hỗ trợ.
+- **LLM resilience:** `get_llm()` áp timeout/retries; cấu hình `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES`, `LLM_FALLBACK_PROVIDER`, `LLM_FALLBACK_MODEL`.
+- **Grounding guard:** `agent/grounding.py` phát hiện số liệu (>= 4 chữ số) trong câu trả lời không xuất hiện trong tool output; log cảnh báo, `GROUNDING_GUARD_STRICT=true` để thay bằng câu an toàn.
 
 ---
 
@@ -317,6 +351,12 @@ celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:Da
 | `JWT_SECRET_KEY` | Khóa bí mật JWT dùng chung | *(bắt buộc, giống FastAPI)* |
 | `ACCESS_TOKEN_LIFETIME_MINUTES` | Thời hạn access token | `15` |
 | `REFRESH_TOKEN_LIFETIME_DAYS` | Thời hạn refresh token | `7` |
+| `PAYMENT_PROVIDER` | Provider thanh toán (MOCK) | `MOCK` |
+| `BOOKING_HOLD_TTL_SECONDS` | Thời gian giữ chỗ chờ thanh toán | `900` |
+| `CANCEL_FULL_REFUND_DAYS` / `CANCEL_PARTIAL_REFUND_DAYS` / `CANCEL_PARTIAL_REFUND_PCT` | Cửa sổ hoàn tiền | `30` / `7` / `50` |
+| `RESCHEDULE_DEADLINE_DAYS` / `MAX_RESCHEDULES` | Hạn & số lần đổi lịch | `7` / `2` |
+| `BOOKING_POLICY_ENFORCED` | Bật thực thi chính sách | `true` |
+| `NOTIFICATIONS_ENABLED` / `NOTIFICATIONS_DISPATCH_ENABLED` | Bật tạo/gửi thông báo (MOCK) | `true` / `true` |
 
 ### `fast_api_services/.env`
 
@@ -333,6 +373,11 @@ celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:Da
 | `DJANGO_SERVICE_URL` | URL nội bộ Django | `http://django:8000` |
 | `CHROMA_PERSIST_DIR` | Thư mục lưu ChromaDB | `./chromadb_data` |
 | `DOCS_DIR` | Thư mục tài liệu RAG | `../docs` |
+| `LLM_TIMEOUT_SECONDS` | Timeout gọi LLM (giây) | `30` |
+| `LLM_MAX_RETRIES` | Số lần retry LLM | `2` |
+| `LLM_FALLBACK_PROVIDER` / `LLM_FALLBACK_MODEL` | Model dự phòng (rỗng = tắt) | `openai` / `gpt-4o-mini` |
+| `SLOT_HOLD_TTL_SECONDS` | TTL giữ chỗ Redis | `900` |
+| `GROUNDING_GUARD_ENABLED` / `GROUNDING_GUARD_STRICT` | Bật/độ nghiêm grounding guard | `true` / `false` |
 
 ---
 
@@ -407,11 +452,11 @@ trinity_ai/
 ## Chạy kiểm thử
 
 ```bash
-# Django (11 tests)
+# Django (83 tests)
 cd core_service
 pytest --no-header -q
 
-# FastAPI (36 tests)
+# FastAPI (94 tests)
 cd fast_api_services
 pytest tests/ -v
 
@@ -420,7 +465,7 @@ cd frontend
 npm test
 ```
 
-Tổng: **47 backend tests** + **19 frontend tests** = **66 tests**
+Tổng: **177 backend tests** + **19 frontend tests** = **196 tests**
 
 ---
 
@@ -502,8 +547,10 @@ Atomic Lua script prevents race conditions on slot reservation:
 | DB | Key pattern | Purpose | TTL |
 |----|-------------|---------|-----|
 | 0 | `slot:{slot_id}` | Atomic slot counter (Lua gate) | — |
+| 0 | `hold:{slot_id}` | TTL seat hold while a user is still confirming | 900 s |
 | 0 | `session:{user_id}` | LangChain conversation history | 30 min |
 | 0 | `proposal:{user_id}` | Pending scheduling proposal | 30 min |
+| 0 | `pending_action:{user_id}` | Write action awaiting server-side confirmation | 30 min |
 | 0 | `schedule_task:{task_id}` | OR-Tools solver result (JSON) | 2 h |
 | 1 | Celery broker queues | Task messages | — |
 | 2 | Celery result backend | Task state/result | — |
@@ -662,9 +709,16 @@ GET  /api/catalog/slots          ?available_only=true&grade=3&exam_type=rock_pop
 ### Bookings (FastAPI reads / Django writes)
 
 ```
-GET  /api/bookings/              List my bookings
-GET  /api/bookings/{id}          Booking detail
-POST /api/bookings/create/       { slot_id } → create booking (Django)
+GET  /api/bookings/                     List my bookings (kèm payment_status, price)
+GET  /api/bookings/{id}                 Booking detail
+POST /api/bookings/                     { slot_id, student_name, student_dob, ... } → create (Django)
+                                        Header: Idempotency-Key (optional) — chống tạo trùng
+POST /api/bookings/{id}/cancel          { reason, confirm }
+POST /api/bookings/{id}/pay             { method, confirm }   — MOCK gateway
+POST /api/bookings/{id}/refund          { confirm }           — MOCK, tính theo policy
+POST /api/bookings/{id}/documents       { doc_type, file_ref } — MOCK upload
+GET  /api/bookings/{id}/result          Kết quả + chứng chỉ (nếu đã công bố)
+POST /api/bookings/{id}/result/publish  CENTER_ADMIN công bố kết quả (MOCK)
 ```
 
 ### Agent (FastAPI SSE)
@@ -686,13 +740,15 @@ SSE events:
 ```
 # Dispatch batch scheduling Celery task (CENTER_ADMIN only)
 POST /api/centers/schedule/batch/
-Body: { "year": 2026, "month": 5 }
+Body: { "date_from": "2026-05-01", "date_to": "2026-05-31" }
 → { "task_id": "uuid" }   (Celery task dispatched; result written to Redis)
 
 # Commit proposed plan to DB after admin confirms
-POST /api/centers/schedule/confirm/
-Body: { "task_id": "uuid" }
-→ { "assigned": 42 }      (number of slots updated)
+POST /api/centers/schedule/batch/{task_id}/confirm/
+→ { "assigned_count": 42, "skipped": [] }
+
+# Center analytics (CENTER_ADMIN)
+GET  /api/centers/reports/summary/?date_from=2026-05-01&date_to=2026-05-31
 
 # Read scheduling data (FastAPI)
 GET  /api/scheduling/examiners        List examiners for the admin's center
@@ -772,4 +828,4 @@ cd fast_api_services && pytest tests/ -v
 cd frontend && npm test
 ```
 
-Total: **47 backend tests** (11 Django + 36 FastAPI) + **19 frontend tests**
+Total: **177 backend tests** (83 Django + 94 FastAPI) + **19 frontend tests**
