@@ -27,9 +27,11 @@ from datetime import timedelta as _timedelta
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from .state import SchedulingState
+from .state import SchedulingState, TaskType
 
 logger = logging.getLogger(__name__)
+
+_VALID_TASK_TYPES = {t.value for t in TaskType}
 
 
 def _extract_date_range(text: str):
@@ -90,11 +92,24 @@ def _default_range_forward() -> tuple[str, str]:
 
 # ── node: classify ────────────────────────────────────────────────────────────
 
+async def _text_classify(llm, prompt, human) -> str:
+    """Legacy free-text classification — fallback when structured output fails."""
+    response = await llm.ainvoke([prompt, human])
+    return (response.content or "").strip().lower()
+
+
 def _make_classify_node(llm):
+    # Structured classifier (TaskType) with retry/fallback; None → text fallback.
+    from .llm import get_classifier_llm
+
+    classifier = get_classifier_llm()
+
     async def classify_node(state: SchedulingState) -> dict:
         """
-        Use the LLM to classify the admin's intent into one of:
-          assign_examiner | view_calendar | reschedule | general
+        Classify the admin's intent into exactly one TaskType.
+
+        Prefers structured output (reliable, no free-text parsing); falls back
+        to the legacy text parse if the model/provider cannot do structured output.
         """
         last_human = next(
             (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
@@ -120,17 +135,25 @@ def _make_classify_node(llm):
                 "Respond with ONLY the task_type string, nothing else."
             )
         )
-        response = await llm.ainvoke([classification_prompt, last_human])
-        task_type = response.content.strip().lower()
-        if task_type not in (
-            "assign_examiner",
-            "view_calendar",
-            "view_examiner_schedule",
-            "reschedule",
-            "batch_assign",
-            "general",
-        ):
+
+        task_type: str | None = None
+        if classifier is not None:
+            try:
+                result = await classifier.ainvoke([classification_prompt, last_human])
+                task_type = (getattr(result, "value", None) or str(result)).strip().lower()
+            except Exception as exc:
+                logger.warning("Structured classify failed; using text fallback: %s", exc)
+
+        if task_type not in _VALID_TASK_TYPES:
+            try:
+                task_type = await _text_classify(llm, classification_prompt, last_human)
+            except Exception as exc:
+                logger.warning("Text classify failed: %s", exc)
+                task_type = "general"
+
+        if task_type not in _VALID_TASK_TYPES:
             task_type = "general"
+
         # Preserve proposal/confirmed from previous turn if they exist
         return {
             "task_type": task_type,

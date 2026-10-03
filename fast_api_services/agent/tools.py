@@ -17,6 +17,7 @@ from typing import Any, Optional
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from fast_api_services.agent.authorization import authorize_write
 from fast_api_services.config import get_settings
 from fast_api_services.services.booking_service import get_booking, list_user_bookings
 
@@ -39,6 +40,8 @@ class ToolContext:
     embeddings: Any  # Embeddings (lazy type to avoid heavy import)
     persist_dir: str
     user_role: str = "STUDENT"  # "STUDENT" | "PARENT" | "CENTER_ADMIN"
+    # None = unmanaged (legacy/tests); router supplies a frozenset in production.
+    authorized_actions: frozenset[str] | None = None
 
 
 def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
@@ -179,7 +182,17 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         Returns:
             Booking confirmation or error message.
         """
-        if not confirm:
+        if not await authorize_write(
+            ctx,
+            "create_booking",
+            {
+                "slot_id": slot_id,
+                "student_name": student_name,
+                "student_dob": student_dob,
+                "notes": notes,
+            },
+            confirm,
+        ):
             return (
                 f"{_CONFIRM_REQUIRED}\n"
                 f"Action: Create booking — Slot {slot_id}, Student: {student_name} "
@@ -224,7 +237,12 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         Returns:
             Cancellation result or error.
         """
-        if not confirm:
+        if not await authorize_write(
+            ctx,
+            "cancel_booking",
+            {"booking_id": booking_id, "reason": reason},
+            confirm,
+        ):
             return (
                 f"{_CONFIRM_REQUIRED}\n"
                 f"Action: Cancel Booking #{booking_id}. Reply 'xác nhận' to confirm."
@@ -244,11 +262,44 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
             logger.error("cancel_booking error: %s", exc)
             return f"❌ Error cancelling booking: {exc}"
 
+    @tool
+    async def pay_booking(booking_id: int, confirm: bool = False) -> str:
+        """
+        Pay for an existing booking using the MOCK payment gateway.
+        IMPORTANT: Always confirm with the user BEFORE calling this with confirm=True.
+        Args:
+            booking_id: The booking ID to pay for.
+            confirm: Must be True (user confirmed). Never set True without user consent.
+        Returns:
+            Payment result or error message.
+        """
+        if not await authorize_write(
+            ctx, "pay_booking", {"booking_id": booking_id}, confirm
+        ):
+            return (
+                f"{_CONFIRM_REQUIRED}\n"
+                f"Action: Pay for Booking #{booking_id} (MOCK gateway). "
+                "Reply 'xác nhận' to proceed."
+            )
+        settings = get_settings()
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    f"{settings.django_service_url}/api/bookings/{booking_id}/pay/",
+                    json={"method": "MOCK"},
+                    headers={"Authorization": f"Bearer {ctx.user_token}"},
+                )
+            if resp.status_code == 200:
+                return f"✅ Booking #{booking_id} paid (MOCK gateway)."
+            return f"❌ Payment failed (HTTP {resp.status_code}): {resp.text[:200]}"
+        except Exception as exc:
+            logger.error("pay_booking error: %s", exc)
+            return f"❌ Error paying booking: {exc}"
+
     from fast_api_services.agent.scheduling_tools import (
         SchedulingToolContext,
         make_reschedule_tools,
     )
-
     reschedule_ctx = SchedulingToolContext(
         session_factory=ctx.session_factory,
         user_token=ctx.user_token,
@@ -264,6 +315,7 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         list_my_bookings,
         create_booking,
         cancel_booking,
+        pay_booking,
         *reschedule_tools,
     ]
 

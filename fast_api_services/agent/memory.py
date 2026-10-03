@@ -121,3 +121,45 @@ async def clear_pending_proposal(redis, user_id: int) -> None:
         await redis.delete(_proposal_key(user_id))
     except Exception as exc:
         logger.error("Failed to clear pending proposal for user %s: %s", user_id, exc)
+
+
+# ── pending write action (server-side confirmation boundary) ──────────────────
+
+def _pending_action_key(user_id: int) -> str:
+    return f"pending_action:{user_id}"
+
+
+async def save_pending_action(
+    redis,
+    user_id: int,
+    tool_name: str,
+    args: dict,
+    action_hash: str,
+    ttl: int = _HISTORY_TTL,
+) -> None:
+    """Record a write action awaiting the user's explicit confirmation."""
+    try:
+        data = json.dumps({"tool": tool_name, "args": args, "hash": action_hash})
+        await redis.setex(_pending_action_key(user_id), ttl, data)
+    except Exception as exc:
+        logger.error("Failed to save pending action for user %s: %s", user_id, exc)
+
+
+async def load_pending_action(redis, user_id: int) -> dict | None:
+    """Load the pending write action, or None if there is none."""
+    try:
+        raw = await redis.get(_pending_action_key(user_id))
+        if raw is None:
+            return None
+        return json.loads(raw if isinstance(raw, str) else raw.decode())
+    except Exception as exc:
+        logger.error("Failed to load pending action for user %s: %s", user_id, exc)
+        return None
+
+
+async def clear_pending_action(redis, user_id: int) -> None:
+    """Remove the pending write action after execution or cancellation."""
+    try:
+        await redis.delete(_pending_action_key(user_id))
+    except Exception as exc:
+        logger.error("Failed to clear pending action for user %s: %s", user_id, exc)

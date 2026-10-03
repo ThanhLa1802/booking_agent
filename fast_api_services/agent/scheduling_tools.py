@@ -18,11 +18,12 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date as date_type
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from fast_api_services.agent.authorization import authorize_write
 from fast_api_services.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,10 @@ class SchedulingToolContext:
     session_factory: async_sessionmaker
     user_token: str   # JWT — forwarded to Django for write calls
     center_id: int    # the admin's center (extracted from user profile)
+    user_id: int = 0
+    redis: Any = None
+    # None = unmanaged (legacy/tests); router supplies a frozenset in production.
+    authorized_actions: frozenset[str] | None = None
 
 
 def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
@@ -282,7 +287,12 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
         Returns:
             Success message or error details.
         """
-        if not confirm:
+        if not await authorize_write(
+            ctx,
+            "assign_examiner_to_slot",
+            {"slot_id": slot_id, "examiner_id": examiner_id},
+            confirm,
+        ):
             return (
                 f"{_CONFIRM_REQUIRED}\n"
                 f"Action: Assign examiner #{examiner_id} to slot #{slot_id}. "
@@ -531,7 +541,12 @@ def make_reschedule_tools(ctx: SchedulingToolContext, user_id: int) -> list:
         Returns:
             Success message or error details.
         """
-        if not confirm:
+        if not await authorize_write(
+            ctx,
+            "reschedule_booking",
+            {"booking_id": booking_id, "new_slot_id": new_slot_id, "reason": reason},
+            confirm,
+        ):
             return (
                 f"{_CONFIRM_REQUIRED}\n"
                 f"Action: Reschedule booking #{booking_id} to slot #{new_slot_id}. "

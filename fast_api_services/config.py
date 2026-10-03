@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     jwt_algorithm: str = "HS256"
 
+    # Slot hold TTL (seconds) used while a user is still confirming.
+    slot_hold_ttl_seconds: int = 900
+
     # AI / LLM
     llm_provider: str = "openai"          # "ollama" | "google" | "openai"
     llm_model: str = "gpt-4o-mini"
@@ -30,6 +33,17 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     chroma_persist_dir: str = "./chromadb_data"
     docs_dir: str = "../docs"
+
+    # LLM resilience
+    llm_timeout_seconds: int = 30
+    llm_max_retries: int = 2
+    # Optional fallback model (provider + model). Empty = disabled.
+    llm_fallback_provider: str = ""
+    llm_fallback_model: str = ""
+
+    # Grounding guard — detect numbers in the answer absent from tool output.
+    grounding_guard_enabled: bool = True
+    grounding_guard_strict: bool = False
 
     # LangSmith tracing (optional — set LANGCHAIN_API_KEY to enable)
     langchain_tracing_v2: str = "false"   # "true" to enable

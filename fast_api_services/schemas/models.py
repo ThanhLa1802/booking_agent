@@ -87,6 +87,72 @@ class BookingOut(BaseModel):
     notes: str
     created_at: datetime
 
+    # ── payment / holds / candidate profile (optional for backward compat) ────
+    price: Optional[Decimal] = None
+    currency: str = "VND"
+    payment_status: Optional[str] = None
+    hold_expires_at: Optional[datetime] = None
+    guardian_name: str = ""
+    guardian_phone: str = ""
+    contact_email: str = ""
+    candidate_id_number: str = ""
+    school: str = ""
+    teacher_name: str = ""
+    special_needs: str = ""
+    reschedule_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class PaymentOut(BaseModel):
+    id: int
+    amount: Decimal
+    currency: str
+    method: str
+    status: str
+    provider_ref: str = ""
+    is_mock: bool = True
+    refund_amount: Decimal = Decimal("0")
+    created_at: datetime
+    paid_at: Optional[datetime] = None
+    refunded_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class PaymentInitIn(BaseModel):
+    method: str = "MOCK"
+    confirm: bool = False   # confirmation gate — must be True to proceed
+
+
+class RefundIn(BaseModel):
+    confirm: bool = False
+
+
+class CandidateDocumentIn(BaseModel):
+    doc_type: str = "OTHER"
+    file_ref: str = ""
+
+
+class CandidateDocumentOut(BaseModel):
+    id: int
+    doc_type: str
+    file_ref: str = ""
+    status: str
+    uploaded_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ExamResultOut(BaseModel):
+    id: int
+    status: str
+    mark: Optional[Decimal] = None
+    grade_awarded: str = ""
+    examiner_comment: str = ""
+    published_at: Optional[datetime] = None
+    certificate: Optional[dict] = None
+
     model_config = {"from_attributes": True}
 
 
@@ -96,6 +162,16 @@ class BookingCreateIn(BaseModel):
     student_dob: date
     notes: str = ""
     confirm: bool = False   # confirmation gate — must be True to proceed
+
+    # candidate profile (optional, mock-expanded)
+    guardian_name: str = ""
+    guardian_phone: str = ""
+    contact_email: str = ""
+    candidate_id_number: str = ""
+    school: str = ""
+    teacher_name: str = ""
+    special_needs: str = ""
+    idempotency_key: Optional[str] = None
 
 
 class BookingCancelIn(BaseModel):

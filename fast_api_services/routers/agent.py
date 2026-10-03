@@ -70,8 +70,10 @@ async def chat(
         from fast_api_services.agent.confirmation import is_cancel, is_confirmation
         from fast_api_services.agent.llm import get_embeddings, get_llm
         from fast_api_services.agent.memory import (
+            clear_pending_action,
             clear_pending_proposal,
             load_history,
+            load_pending_action,
             load_pending_proposal,
             save_history,
             save_pending_proposal,
@@ -116,20 +118,7 @@ async def chat(
         except Exception as exc:
             logger.warning("Could not fetch user_role for %s: %s", user_id, exc)
 
-        ctx = ToolContext(
-            session_factory=session_factory,
-            redis=redis,
-            user_id=user_id,
-            user_token=current_user.raw_token,
-            embeddings=embeddings,
-            persist_dir=settings.chroma_persist_dir,
-            user_role=user_role,
-        )
-        booking_tools = make_tools(ctx)
-        chat_history = await load_history(redis, user_id)
-
-        # ── pending proposal (scheduling confirmation gate) ────────────────
-        # Explicit, standalone commands only — never substring matches.
+        # ── confirmation signals (explicit, standalone commands only) ──────
         is_confirm_msg = is_confirmation(request.message)
         is_cancel_msg = is_cancel(request.message)
 
@@ -138,10 +127,39 @@ async def chat(
             await clear_pending_proposal(redis, user_id)
             pending_proposal = None
 
+        # ── server-side write authorization ────────────────────────────────
+        # A write only executes if the user's RAW message is an explicit
+        # confirmation AND it matches a pending action recorded on a prior turn.
+        pending_action = await load_pending_action(redis, user_id)
+        if pending_action and is_cancel_msg:
+            await clear_pending_action(redis, user_id)
+            pending_action = None
+        authorized_actions = (
+            frozenset({pending_action["hash"]})
+            if (pending_action and is_confirm_msg)
+            else frozenset()
+        )
+
+        ctx = ToolContext(
+            session_factory=session_factory,
+            redis=redis,
+            user_id=user_id,
+            user_token=current_user.raw_token,
+            embeddings=embeddings,
+            persist_dir=settings.chroma_persist_dir,
+            user_role=user_role,
+            authorized_actions=authorized_actions,
+        )
+        booking_tools = make_tools(ctx)
+        chat_history = await load_history(redis, user_id)
+
         sched_ctx = SchedulingToolContext(
             session_factory=session_factory,
             user_token=current_user.raw_token,
             center_id=center_id,
+            user_id=user_id,
+            redis=redis,
+            authorized_actions=authorized_actions,
         )
         scheduling_tools = (
             make_scheduling_tools(sched_ctx)
@@ -188,6 +206,7 @@ async def chat(
         }
 
         final_output = ""
+        tool_outputs: list[str] = []
 
         try:
             # ── Confirmation turn: execute_node doesn't call LLM, so no stream tokens.
@@ -202,6 +221,8 @@ async def chat(
                     final_output = getattr(msgs[-1], "content", "")
                 # Clear the pending proposal after execution
                 await clear_pending_proposal(redis, user_id)
+                if is_confirm_msg:
+                    await clear_pending_action(redis, user_id)
                 await save_history(redis, user_id, request.message, final_output)
                 yield {"data": json.dumps({"type": "done", "content": final_output})}
                 return
@@ -248,6 +269,7 @@ async def chat(
                     node_name = event.get("metadata", {}).get("langgraph_node", "")
                     if node_name not in _INTERNAL_NODES:
                         tool_output = event.get("data", {}).get("output", "")
+                        tool_outputs.append(str(tool_output))
                         yield {
                             "data": json.dumps(
                                 {
@@ -289,7 +311,26 @@ async def chat(
                             last = msgs[-1]
                             final_output = getattr(last, "content", final_output)
 
+            # ── grounding guard: flag numbers absent from tool output ──────
+            if getattr(settings, "grounding_guard_enabled", True):
+                from fast_api_services.agent.grounding import find_ungrounded_numbers
+
+                ungrounded = find_ungrounded_numbers(final_output, tool_outputs)
+                if ungrounded:
+                    logger.warning(
+                        "Grounding guard: ungrounded numbers %s for user %s",
+                        ungrounded,
+                        user_id,
+                    )
+                    if getattr(settings, "grounding_guard_strict", False):
+                        final_output = (
+                            "Xin lỗi, tôi cần kiểm tra lại thông tin để đảm bảo "
+                            "chính xác. Vui lòng thử lại hoặc liên hệ trung tâm."
+                        )
+
             await save_history(redis, user_id, request.message, final_output)
+            if is_confirm_msg:
+                await clear_pending_action(redis, user_id)
             yield {"data": json.dumps({"type": "done", "content": final_output})}
 
         except Exception as exc:

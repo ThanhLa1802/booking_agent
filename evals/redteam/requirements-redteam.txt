@@ -1,0 +1,10 @@
+# Optional red-team tooling — NOT required for the CI pytest suite.
+# Install in a throwaway venv to avoid polluting the service environment:
+#   python -m venv .venv-redteam
+#   .venv-redteam\Scripts\pip install -r evals/redteam/requirements-redteam.txt
+#
+# promptfoo is a Node tool, installed on demand:
+#   npx promptfoo@latest redteam run -c evals/promptfoo/promptfooconfig.yaml
+
+pyrit>=0.4
+garak>=0.9

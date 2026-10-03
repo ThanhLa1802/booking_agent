@@ -9,10 +9,22 @@ the Redis checkpointer.
 """
 from __future__ import annotations
 
+from enum import Enum
 from typing import Annotated, Optional
 
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
+
+
+class TaskType(str, Enum):
+    """Intent labels for the CENTER_ADMIN scheduling agent (structured output)."""
+
+    ASSIGN_EXAMINER = "assign_examiner"
+    VIEW_CALENDAR = "view_calendar"
+    VIEW_EXAMINER_SCHEDULE = "view_examiner_schedule"
+    RESCHEDULE = "reschedule"
+    BATCH_ASSIGN = "batch_assign"
+    GENERAL = "general"
 
 
 class BookingState(TypedDict):

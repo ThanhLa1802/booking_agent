@@ -166,9 +166,9 @@ async def test_search_exam_docs_no_results(mock_ctx):
 # ── Tool count ────────────────────────────────────────────────────────────────
 
 def test_make_tools_returns_seven(mock_ctx):
-    """make_tools must return exactly 9 tools (7 booking + 2 reschedule)."""
+    """make_tools must return exactly 10 tools (8 booking + 2 reschedule)."""
     tools = make_tools(mock_ctx)
-    assert len(tools) == 9
+    assert len(tools) == 10
 
 
 def test_tool_names(mock_ctx):
@@ -183,6 +183,7 @@ def test_tool_names(mock_ctx):
         "list_my_bookings",
         "create_booking",
         "cancel_booking",
+        "pay_booking",
         "suggest_slots_for_reschedule",
         "reschedule_booking",
     }
