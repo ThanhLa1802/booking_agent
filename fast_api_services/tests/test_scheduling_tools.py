@@ -511,7 +511,7 @@ async def test_confirm_schedule_plan_success(sched_ctx):
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        result = await confirm_tool.ainvoke({"task_id": "abc-123"})
+        result = await confirm_tool.ainvoke({"task_id": "abc-123", "confirm": True})
 
     assert "✅" in result
     assert "12" in result
@@ -532,7 +532,7 @@ async def test_confirm_schedule_plan_failure(sched_ctx):
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        result = await confirm_tool.ainvoke({"task_id": "abc-123"})
+        result = await confirm_tool.ainvoke({"task_id": "abc-123", "confirm": True})
 
     assert "❌" in result
     assert "404" in result

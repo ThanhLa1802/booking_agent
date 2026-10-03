@@ -440,15 +440,24 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
         return "\n".join(lines)
 
     @tool
-    async def confirm_schedule_plan(task_id: str) -> str:
+    async def confirm_schedule_plan(task_id: str, confirm: bool = False) -> str:
         """
         Commit a previously reviewed schedule plan to the database.
         Only call this after the admin has explicitly confirmed the plan.
         Args:
             task_id: The task_id returned by auto_plan_schedule.
+            confirm: Must be True after user confirms. Never set True without consent.
         Returns:
             Success message or error details.
         """
+        if not await authorize_write(
+            ctx, "confirm_schedule_plan", {"task_id": task_id}, confirm
+        ):
+            return (
+                f"{_CONFIRM_REQUIRED}\n"
+                f"Action: Lưu kế hoạch xếp lịch (task {task_id}). "
+                "Gõ 'xác nhận' để lưu vào hệ thống."
+            )
         settings = get_settings()
         try:
             async with httpx.AsyncClient(timeout=15) as client:

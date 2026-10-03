@@ -85,6 +85,7 @@ async def chat(
         )
         from fast_api_services.agent.supervisor import create_supervisor_graph
         from fast_api_services.agent.tools import ToolContext, make_tools
+        from fast_api_services.agent.write_gate import compute_authorized_actions
         from fast_api_services.services.slot_cache import get_redis_client
 
         # ── setup ──────────────────────────────────────────────────────────
@@ -127,17 +128,19 @@ async def chat(
             await clear_pending_proposal(redis, user_id)
             pending_proposal = None
 
+        # A stored scheduling proposal confirmed this turn resumes directly.
+        _resume = bool(pending_proposal and is_confirm_msg)
+
         # ── server-side write authorization ────────────────────────────────
         # A write only executes if the user's RAW message is an explicit
-        # confirmation AND it matches a pending action recorded on a prior turn.
+        # confirmation AND it matches a pending action recorded on a prior turn
+        # or the write implied by a stored scheduling proposal.
         pending_action = await load_pending_action(redis, user_id)
         if pending_action and is_cancel_msg:
             await clear_pending_action(redis, user_id)
             pending_action = None
-        authorized_actions = (
-            frozenset({pending_action["hash"]})
-            if (pending_action and is_confirm_msg)
-            else frozenset()
+        authorized_actions = compute_authorized_actions(
+            pending_action, pending_proposal, is_confirm_msg
         )
 
         ctx = ToolContext(
@@ -174,8 +177,6 @@ async def chat(
         )
 
         from langchain_core.messages import HumanMessage
-
-        _resume = bool(pending_proposal and is_confirm_msg)
 
         # ── early "please wait" feedback for batch scheduling ──────────────
         # batch scheduling takes 15+ s (Celery task + Redis polling).

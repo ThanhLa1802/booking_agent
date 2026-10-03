@@ -34,9 +34,30 @@ _NEGATED_CONFIRM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "không hủy" = keep it, never a cancellation.
+_NEGATED_CANCEL_RE = re.compile(
+    r"không\s+(?:hủy|huỷ|huy|cancel|thôi|dừng|dung)",
+    re.IGNORECASE,
+)
+
+# A real confirmation/cancellation is a short command. A long sentence that
+# merely mentions the keyword (e.g. "Tôi muốn xác nhận lại thông tin lịch thi")
+# must NOT trip the gate.
+_MAX_COMMAND_WORDS = 4
+
+# Interrogatives never count as a command, even when short ("ok không?").
+_QUESTION_RE = re.compile(
+    r"[?？]|(?:^|\s)(?:không|chưa|gì|sao|nào|bao\s*giờ|khi\s*nào|thế\s*nào)(?=\s|$)",
+    re.IGNORECASE,
+)
+
 
 def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _is_short_command(normalized: str) -> bool:
+    return len(normalized.split()) <= _MAX_COMMAND_WORDS
 
 
 def is_confirmation(text: str) -> bool:
@@ -44,12 +65,20 @@ def is_confirmation(text: str) -> bool:
     normalized = normalize(text)
     if not normalized or _NEGATED_CONFIRM_RE.search(normalized):
         return False
-    return bool(_CONFIRM_RE.search(normalized))
+    if not _CONFIRM_RE.search(normalized):
+        return False
+    if _QUESTION_RE.search(normalized):
+        return False
+    return _is_short_command(normalized)
 
 
 def is_cancel(text: str) -> bool:
     """True only if *text* is an explicit, standalone cancellation command."""
     normalized = normalize(text)
-    if not normalized:
+    if not normalized or _NEGATED_CANCEL_RE.search(normalized):
         return False
-    return bool(_CANCEL_RE.search(normalized))
+    if not _CANCEL_RE.search(normalized):
+        return False
+    if _QUESTION_RE.search(normalized):
+        return False
+    return _is_short_command(normalized)

@@ -2,15 +2,12 @@
 Integration tests for the server-side write gate across agent paths.
 
 These lock in the invariant that *every* write tool is backed by the
-server-managed authorization set, not the model's ``confirm`` flag.
+server-managed authorization set, not the model's ``confirm`` flag:
 
-Two tests are marked xfail because the current wiring leaves gaps; they turn
-green once:
-  * the router authorizes the action implied by a confirmed scheduling proposal
-    (routers/agent.py derives ``authorized_actions`` from ``pending_action``
-    only, but ``propose_node`` never records one), and
-  * the booking graph forwards its managed context to the reschedule tools
-    (tools.py builds them with an unmanaged ``SchedulingToolContext``).
+  * a write with no server authorization is refused even at ``confirm=True``;
+  * a matching hash (from a ``pending_action`` or a confirmed scheduling
+    proposal) lets it through;
+  * the router's ``compute_authorized_actions`` is the single source of that set.
 """
 from __future__ import annotations
 
@@ -19,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from fast_api_services.agent.authorization import action_hash
+from fast_api_services.agent.proposals import proposal_to_action
 from fast_api_services.agent.scheduling_tools import (
     SchedulingToolContext,
     make_reschedule_tools,
@@ -32,6 +30,7 @@ from fast_api_services.agent.tools import (
     ToolContext,
     make_tools,
 )
+from fast_api_services.agent.write_gate import compute_authorized_actions
 
 
 def _session_factory():
@@ -119,38 +118,64 @@ class TestAdminSchedulingGate:
 
         assert SCHED_CONFIRM in result
 
-    @pytest.mark.xfail(
-        reason="propose_node never records a pending_action, so on the resume turn "
-        "the router supplies an empty authorized set and execute_node's write is "
-        "refused (routers/agent.py derives authorized_actions from pending_action only)",
-        strict=False,
-    )
     @pytest.mark.asyncio
     async def test_resume_turn_authorizes_proposal_implied_action(self):
-        # Production resume wiring: pending_proposal exists, pending_action does
-        # not -> authorized_actions == frozenset().
-        ctx = _sched_ctx(frozenset())
-        tools = make_scheduling_tools(ctx)
-        tool = next(t for t in tools if t.name == "assign_examiner_to_slot")
+        # The router authorizes the action implied by a confirmed proposal.
+        proposal = {
+            "task_type": "assign_examiner",
+            "slot_id": 5,
+            "examiner_id": 2,
+            "conversation_messages": [],
+        }
+        tool_name, args = proposal_to_action(proposal)
+        assert tool_name == "assign_examiner_to_slot"
 
+        allowed = compute_authorized_actions(
+            pending_action=None,
+            pending_proposal={"proposal": proposal},
+            is_confirm_msg=True,
+        )
+        assert action_hash(tool_name, args) in allowed
+
+        tools = make_scheduling_tools(_sched_ctx(allowed))
+        tool = next(t for t in tools if t.name == tool_name)
         patcher = _patch_httpx({"examiner_name": "X"})
         try:
-            result = await tool.ainvoke(
-                {"slot_id": 5, "examiner_id": 2, "confirm": True}
-            )
+            result = await tool.ainvoke({**args, "confirm": True})
         finally:
             patcher.stop()
 
         assert SCHED_CONFIRM not in result
 
+    @pytest.mark.asyncio
+    async def test_confirm_schedule_plan_blocked_without_authorization(self):
+        tools = make_scheduling_tools(_sched_ctx(frozenset()))
+        tool = next(t for t in tools if t.name == "confirm_schedule_plan")
+
+        result = await tool.ainvoke({"task_id": "abc-123", "confirm": True})
+
+        assert SCHED_CONFIRM in result
+
+    @pytest.mark.asyncio
+    async def test_confirm_schedule_plan_executes_with_proposal_authorization(self):
+        proposal = {"task_type": "batch_assign", "task_id": "abc-123"}
+        tool_name, args = proposal_to_action(proposal)
+        assert tool_name == "confirm_schedule_plan"
+
+        allowed = compute_authorized_actions(None, {"proposal": proposal}, True)
+        tools = make_scheduling_tools(_sched_ctx(allowed))
+        tool = next(t for t in tools if t.name == "confirm_schedule_plan")
+
+        patcher = _patch_httpx({"assigned_count": 12})
+        try:
+            result = await tool.ainvoke({**args, "confirm": True})
+        finally:
+            patcher.stop()
+
+        assert "✅" in result
+
 
 class TestBookingGraphGate:
-    @pytest.mark.xfail(
-        reason="make_tools builds the reschedule tools with an unmanaged "
-        "SchedulingToolContext (tools.py), so reschedule_booking falls back to "
-        "the model's confirm flag instead of the server-managed set",
-        strict=False,
-    )
     @pytest.mark.asyncio
     async def test_student_reschedule_uses_server_managed_gate(self):
         tools = make_tools(_booking_ctx(frozenset()))
@@ -165,3 +190,22 @@ class TestBookingGraphGate:
             patcher.stop()
 
         assert _CONFIRM_REQUIRED in result
+
+
+class TestComputeAuthorizedActions:
+    def test_empty_without_confirmation(self):
+        proposal = {"task_type": "assign_examiner", "slot_id": 5, "examiner_id": 2}
+        assert compute_authorized_actions(None, {"proposal": proposal}, False) == frozenset()
+
+    def test_includes_pending_action_hash(self):
+        allowed = compute_authorized_actions({"hash": "deadbeef"}, None, True)
+        assert "deadbeef" in allowed
+
+    def test_includes_proposal_action_hash(self):
+        proposal = {"task_type": "batch_assign", "task_id": "t1"}
+        allowed = compute_authorized_actions(None, {"proposal": proposal}, True)
+        assert action_hash("confirm_schedule_plan", {"task_id": "t1"}) in allowed
+
+    def test_ignores_unknown_task_type(self):
+        proposal = {"task_type": "general"}
+        assert compute_authorized_actions(None, {"proposal": proposal}, True) == frozenset()

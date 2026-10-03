@@ -304,6 +304,9 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
         session_factory=ctx.session_factory,
         user_token=ctx.user_token,
         center_id=0,  # not used by reschedule tools
+        user_id=ctx.user_id,
+        redis=ctx.redis,
+        authorized_actions=ctx.authorized_actions,
     )
     reschedule_tools = make_reschedule_tools(reschedule_ctx, ctx.user_id)
 

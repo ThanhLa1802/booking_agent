@@ -27,6 +27,7 @@ from datetime import timedelta as _timedelta
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from .proposals import proposal_to_action
 from .state import SchedulingState, TaskType
 
 logger = logging.getLogger(__name__)
@@ -437,75 +438,17 @@ def _make_execute_node(tools: list):
 
     async def execute_node(state: SchedulingState) -> dict:
         proposal = state.get("proposal") or {}
-        task_type = proposal.get("task_type", state.get("task_type", "general"))
+        action = proposal_to_action(proposal)
 
-        result = "❌ Could not determine the action to execute."
-
-        if task_type == "assign_examiner":
-            tool = tool_map.get("assign_examiner_to_slot")
-            if tool:
-                # Use extracted IDs from proposal or try to extract from conversation
-                slot_id = proposal.get("slot_id")
-                examiner_id = proposal.get("examiner_id")
-                
-                # Fallback: extract from conversation messages if not in proposal
-                if not slot_id or not examiner_id:
-                    proposal_messages = proposal.get("conversation_messages", [])
-                    messages_text = " ".join(proposal_messages) if proposal_messages else ""
-                    
-                    if not slot_id:
-                        m = _re.search(r"slot\s*[#:]?\s*(\d+)", messages_text, _re.I)
-                        if m:
-                            slot_id = int(m.group(1))
-                    
-                    if not examiner_id:
-                        m = _re.search(r"(?:giám\s*khảo|examiner)\s*[#:]?\s*(\d+)", messages_text, _re.I)
-                        if m:
-                            examiner_id = int(m.group(1))
-                
-                if slot_id and examiner_id:
-                    result = await tool.ainvoke(
-                        {
-                            "slot_id": slot_id,
-                            "examiner_id": examiner_id,
-                            "confirm": True,
-                        }
-                    )
-                else:
-                    result = (
-                        f"❌ Không tìm thấy Slot ID hoặc Examiner ID. "
-                        f"Có slot_id={slot_id}, examiner_id={examiner_id}."
-                    )
-
-        elif task_type == "reschedule":
-            tool = tool_map.get("reschedule_booking")
-            if tool:
-                # Extract from proposal or conversation
-                proposal_messages = proposal.get("conversation_messages", [])
-                messages_text = " ".join(proposal_messages) if proposal_messages else ""
-
-                booking_match = _re.search(r"booking\s*[#:]?\s*(\d+)", messages_text, _re.I)
-                slot_match = _re.search(r"slot\s*[#:]?\s*(\d+)", messages_text, _re.I)
-                if booking_match and slot_match:
-                    result = await tool.ainvoke(
-                        {
-                            "booking_id": int(booking_match.group(1)),
-                            "new_slot_id": int(slot_match.group(1)),
-                            "confirm": True,
-                        }
-                    )
-                else:
-                    result = "❌ Không tìm thấy Booking ID hoặc Slot ID."
-
-        elif task_type == "batch_assign":
-            tool = tool_map.get("confirm_schedule_plan")
-            task_id = proposal.get("task_id")
-            if tool and task_id:
-                result = await tool.ainvoke({"task_id": task_id})
-            elif not task_id:
-                result = "❌ Không tìm thấy task_id trong proposal."
+        if action is None:
+            result = "❌ Could not determine the action to execute."
+        else:
+            tool_name, args = action
+            tool = tool_map.get(tool_name)
+            if tool is None:
+                result = f"❌ Tool {tool_name} không khả dụng."
             else:
-                result = "❌ Tool confirm_schedule_plan không khả dụng."
+                result = await tool.ainvoke({**args, "confirm": True})
 
         return {
             "messages": [AIMessage(content=result)],
