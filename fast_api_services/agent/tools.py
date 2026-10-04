@@ -310,17 +310,21 @@ def make_tools(ctx: ToolContext) -> list:  # list[BaseTool]
     )
     reschedule_tools = make_reschedule_tools(reschedule_ctx, ctx.user_id)
 
-    return [
-        search_exam_docs,
-        list_courses,
-        list_available_slots,
-        get_booking_detail,
-        list_my_bookings,
-        create_booking,
-        cancel_booking,
-        pay_booking,
-        *reschedule_tools,
-    ]
+    from fast_api_services.agent.tool_errors import harden_tools
+
+    return harden_tools(
+        [
+            search_exam_docs,
+            list_courses,
+            list_available_slots,
+            get_booking_detail,
+            list_my_bookings,
+            create_booking,
+            cancel_booking,
+            pay_booking,
+            *reschedule_tools,
+        ]
+    )
 
 
 # ── private helpers ───────────────────────────────────────────────────────────

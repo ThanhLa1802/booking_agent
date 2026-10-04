@@ -123,6 +123,17 @@ async def chat(
         except Exception as exc:
             logger.warning("Could not fetch user_role for %s: %s", user_id, exc)
 
+        # ── deterministic scope/role guard (before any LLM call) ───────────
+        # Clear role-escalation / off-topic requests are refused here without
+        # invoking the model (see agent/scope_guard.py). Not a write boundary.
+        from fast_api_services.agent.scope_guard import classify_scope
+
+        scope = classify_scope(request.message, user_role)
+        if scope is not None:
+            await save_history(redis, user_id, request.message, scope.reply)
+            yield {"data": json.dumps({"type": "done", "content": scope.reply})}
+            return
+
         # ── confirmation signals (explicit, standalone commands only) ──────
         is_confirm_msg = is_confirmation(request.message)
         is_cancel_msg = is_cancel(request.message)
@@ -157,7 +168,14 @@ async def chat(
             user_role=user_role,
             authorized_actions=authorized_actions,
         )
-        booking_tools = make_tools(ctx)
+        # Least privilege: only build the tools the caller's role can actually
+        # use. A student/parent never gets admin/scheduling tools; an admin
+        # never gets the booking toolset.
+        booking_tools = (
+            make_tools(ctx)
+            if user_role not in ("CENTER_ADMIN", "EXAMINER")
+            else []
+        )
         chat_history = await load_history(redis, user_id)
 
         sched_ctx = SchedulingToolContext(
@@ -171,6 +189,8 @@ async def chat(
         scheduling_tools = (
             make_scheduling_tools(sched_ctx)
             + make_reschedule_tools(sched_ctx, user_id)
+            if user_role == "CENTER_ADMIN"
+            else []
         )
 
         # ── examiner tools (read-only, own schedule only) ──────────────────
@@ -351,12 +371,25 @@ async def chat(
                         )
 
             await save_history(redis, user_id, request.message, final_output)
-            if is_confirm_msg:
+            # Consume the confirmation only once a write actually executed.
+            # A refused confirm (no/mismatched pending action) must NOT delete the
+            # pending action, otherwise a re-registered action gets erased and the
+            # user can never confirm — an infinite "please confirm again" loop.
+            if is_confirm_msg and any("✅" in out for out in tool_outputs):
                 await clear_pending_action(redis, user_id)
             yield {"data": json.dumps({"type": "done", "content": final_output})}
 
         except Exception as exc:
             logger.exception("Agent error for user %s: %s", user_id, exc)
-            yield {"data": json.dumps({"type": "error", "content": str(exc)})}
+            # Never leave the user with an empty reply: if nothing was streamed
+            # (e.g. a tool raised on bad arguments), send a graceful message.
+            if not final_output:
+                final_output = (
+                    "Xin lỗi, mình gặp sự cố khi xử lý yêu cầu này. "
+                    "Vui lòng thử lại hoặc diễn đạt lại giúp mình."
+                )
+                yield {"data": json.dumps({"type": "done", "content": final_output})}
+            else:
+                yield {"data": json.dumps({"type": "error", "content": str(exc)})}
 
     return EventSourceResponse(event_stream())

@@ -479,16 +479,20 @@ def make_scheduling_tools(ctx: SchedulingToolContext) -> list:
             logger.error("confirm_schedule_plan error: %s", exc)
             return f"❌ Lỗi: {exc}"
 
-    return [
-        list_examiners,
-        suggest_examiners_for_slot,
-        search_available_slots,
-        get_exam_calendar,
-        get_examiner_schedule,
-        assign_examiner_to_slot,
-        auto_plan_schedule,
-        confirm_schedule_plan,
-    ]
+    from fast_api_services.agent.tool_errors import harden_tools
+
+    return harden_tools(
+        [
+            list_examiners,
+            suggest_examiners_for_slot,
+            search_available_slots,
+            get_exam_calendar,
+            get_examiner_schedule,
+            assign_examiner_to_slot,
+            auto_plan_schedule,
+            confirm_schedule_plan,
+        ]
+    )
 
 
 def make_reschedule_tools(ctx: SchedulingToolContext, user_id: int) -> list:
@@ -583,4 +587,6 @@ def make_reschedule_tools(ctx: SchedulingToolContext, user_id: int) -> list:
             logger.error("reschedule_booking error: %s", exc)
             return f"❌ Error rescheduling booking: {exc}"
 
-    return [suggest_slots_for_reschedule, reschedule_booking]
+    from fast_api_services.agent.tool_errors import harden_tools
+
+    return harden_tools([suggest_slots_for_reschedule, reschedule_booking])

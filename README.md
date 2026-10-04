@@ -264,73 +264,184 @@ Các phần dưới đây đã có đủ model/endpoint/flow nhưng **provider t
 
 ---
 
-## Cài đặt nhanh (Docker)
+## Hướng dẫn chạy đầy đủ (Full Run Guide)
+
+Hai cách: **Docker Compose** (mọi thứ trong container — khuyến nghị) hoặc **local dev** (tách tiến trình để phát triển).
+
+### 0. Yêu cầu hệ thống
+
+| Công cụ | Phiên bản | Dùng cho |
+|---------|-----------|----------|
+| Docker + Docker Compose | 24+ | Cách A (khuyến nghị); hạ tầng DB/Redis cho cách B |
+| Python | 3.12+ | Django + FastAPI (cách B) |
+| Node.js | 20+ | Frontend (cách B) |
+| PostgreSQL | 15 | Cách B (nếu không dùng Docker cho DB) |
+| Redis | 7 | Cách B (nếu không dùng Docker cho Redis) |
+
+### 1. Biến môi trường (bắt buộc)
 
 ```bash
-# 1. Clone repo
-git clone https://github.com/your-org/trinity_ai.git
-cd trinity_ai
-
-# 2. Tạo file env
 cp core_service/.env.example core_service/.env
 cp fast_api_services/.env.example fast_api_services/.env
-# Điền DB_PASSWORD, SECRET_KEY, JWT_SECRET_KEY vào cả 2 file
-
-# 3. Khởi động toàn bộ hệ thống
-cd deployment
-docker compose up --build
-
-# Ứng dụng chạy tại: http://localhost
-# Lần đầu Ollama tự động tải LLaMA 3.1 8B (~5 GB) — mất vài phút
 ```
 
----
+- **`SECRET_KEY` phải GIỐNG NHAU ở cả hai file.** Django ký JWT bằng `SECRET_KEY` (`core_service/core_service/settings.py:123` → `SIMPLE_JWT.SIGNING_KEY`); FastAPI xác thực bằng cùng key (`fast_api_services/config.py`). Lệch key → mọi request cần auth trả `401 Invalid or expired token`.
+  Sinh key: `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
+  FastAPI từ chối khởi động nếu `SECRET_KEY` còn là giá trị mặc định.
+- **`core_service/.env`**: đặt `SECRET_KEY`, `DB_*`, `REDIS_URL`, `CELERY_*`.
+- **`fast_api_services/.env`**: đặt `SECRET_KEY` (giống trên), `DATABASE_URL`, `REDIS_URL`, `LLM_PROVIDER` + key tương ứng (`OPENAI_API_KEY` là mặc định).
 
-## Cài đặt môi trường Dev
+> Không có biến `JWT_SECRET_KEY` — khóa dùng chung chính là `SECRET_KEY` ở cả hai service.
 
-### Django
+### Cách A — Docker Compose (chạy toàn bộ hệ thống)
+
+```bash
+cd deployment
+docker compose up --build          # lần đầu build image (vài phút)
+# hoặc chạy nền: docker compose up -d --build
+```
+
+Compose khởi động: `db`, `redis`, `django`, `celery`, `celery-beat`, `fast_api`, `frontend`, `nginx`.
+
+> **Không có service Ollama.** LLM mặc định là OpenAI (`LLM_PROVIDER=openai`) nên cần `OPENAI_API_KEY`; muốn dùng local thì trỏ `OLLAMA_BASE_URL` tới một Ollama chạy sẵn và đặt `LLM_PROVIDER=ollama`.
+
+Vì Postgres trong compose tạo bằng `${DB_NAME:-trinity_dev}` / `${DB_USER:-postgres}` / `${DB_PASSWORD:-postgres}`, khi chạy Docker hãy đặt hai file `.env` khớp với host nội bộ `db`:
+
+```dotenv
+# core_service/.env
+SECRET_KEY=<random-giống-fastapi>
+DB_NAME=trinity_dev
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_HOST=db
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/1
+CELERY_RESULT_BACKEND=redis://redis:6379/2
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1,django,nginx
+
+# fast_api_services/.env
+SECRET_KEY=<random-giống-django>
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/trinity_dev
+REDIS_URL=redis://redis:6379/0
+DJANGO_SERVICE_URL=http://django:8000
+```
+
+Container `django` tự động chạy khi khởi động: `migrate` → `collectstatic` → `loaddata` catalog/centers (chỉ lần đầu, nếu chưa có center) → `gunicorn`.
+
+**Truy cập:**
+
+| Mục | URL |
+|-----|-----|
+| Ứng dụng (React qua Nginx) | http://localhost:8080 |
+| Django admin | http://localhost:8080/admin/ |
+| Nginx health (→ Django) | http://localhost:8080/api/health/ |
+| FastAPI trực tiếp | http://localhost:8001 · `/health` · `/docs` |
+
+**Tạo tài khoản + dữ liệu demo** (sau khi `docker compose ps` báo healthy):
+
+```bash
+cd deployment
+docker compose exec django python manage.py createsuperuser   # tài khoản đăng nhập Django/admin
+docker compose exec django python manage.py seed_scheduling   # superadmin / Admin@1234 + giám khảo + slot mẫu
+# tùy chọn: seed_slots, seed_examiners
+```
+
+**Vận hành:**
+
+```bash
+docker compose logs -f django fast_api     # xem log
+docker compose ps                          # trạng thái + health
+docker compose restart fast_api            # FastAPI mount code read-only + --reload nên tự nạp, restart khi cần
+docker compose down                        # dừng, giữ volume
+docker compose down -v                      # dừng + xóa DB/Redis (reset sạch)
+```
+
+### Cách B — Local dev (tách tiến trình)
+
+Thứ tự khởi động: **DB/Redis → Django → Celery → FastAPI → Frontend**. Hai service tách tiến trình nhưng **chung DB và chung `SECRET_KEY`**.
+
+**1) Hạ tầng (Postgres + Redis) bằng Docker:**
+
+```bash
+cd deployment
+docker compose up -d db redis
+```
+
+Dùng `.env.example` (mặc định `DB_HOST=localhost`, `DB_NAME=trinity_db`, cổng host `5432`). Nếu đổi, cập nhật cả hai file `.env` cho khớp.
+
+**2) Django (`core_service/`):**
 
 ```bash
 cd core_service
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/Mac
-
+.venv\Scripts\activate                 # Windows; Linux/Mac: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env            # điền biến môi trường
-
+cp .env.example .env                   # sửa SECRET_KEY, DB_*, REDIS_URL
 python manage.py migrate
 python manage.py loaddata fixtures/initial_catalog.json fixtures/initial_centers.json
-python manage.py runserver 8000
+python manage.py createsuperuser       # tạo tài khoản để đăng nhập
+python manage.py runserver 8000        # http://localhost:8000
 ```
 
-### FastAPI
+**3) Celery (2 terminal, cùng venv Django):**
+
+```bash
+python -m celery -A core_service worker -l info -Q default
+python -m celery -A core_service beat   -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+```
+
+**4) FastAPI (`fast_api_services/`):**
 
 ```bash
 cd fast_api_services
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
-
-uvicorn main:app --reload --port 8001
+cp .env.example .env                   # SECRET_KEY giống Django; DATABASE_URL trỏ localhost; OPENAI_API_KEY
+uvicorn main:app --reload --port 8001  # http://localhost:8001
 ```
 
-### Frontend React
+**5) Frontend (`frontend/`):**
 
 ```bash
 cd frontend
 npm install
-npm run dev     # → http://localhost:3000
+npm run dev                            # http://localhost:3000
 ```
 
-### Celery
+Vite proxy sẵn (`frontend/vite.config.js`): `/api/auth` → `:8000` (Django), mọi `/api` khác → `:8001` (FastAPI).
+
+### 2. Xác minh nhanh
 
 ```bash
-# Trong môi trường Django
-celery -A core_service worker -l info -Q default
-celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+# Health
+curl http://localhost:8001/health                 # FastAPI
+curl http://localhost:8080/api/health/            # Docker: Nginx → Django (local dev: http://localhost:8000/api/health/)
+
+# Đăng nhập lấy JWT — LoginView nhận EMAIL + password
+curl -X POST http://localhost:8080/api/auth/token/ \
+  -H "Content-Type: application/json" \
+  -d '{"email":"<email>","password":"<mat-khau>"}'
+# → { "access": "...", "refresh": "..." }
+
+# Gọi agent (SSE) — dán access token ở trên
+curl -N -X POST http://localhost:8001/api/agent/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access>" \
+  -d '{"message":"Có những khóa Classical & Jazz nào?"}'
 ```
+
+### 3. Lỗi thường gặp
+
+| Triệu chứng | Nguyên nhân / cách sửa |
+|-------------|------------------------|
+| `SECRET_KEY is set to the insecure default value` | Chưa đặt `SECRET_KEY` thật trong `fast_api_services/.env` |
+| Agent/bookings trả `401 Invalid or expired token` | `SECRET_KEY` hai service khác nhau — đặt giống nhau |
+| Django báo không kết nối được DB (Docker) | `DB_NAME/DB_USER/DB_PASSWORD` trong `core_service/.env` phải khớp Postgres của compose, `DB_HOST=db` |
+| Agent trả lỗi LLM | Thiếu `OPENAI_API_KEY`, hoặc `OLLAMA_BASE_URL` chưa trỏ tới Ollama đang chạy |
+| `502` qua Nginx sau khi restart container | Chờ healthcheck xanh; Nginx tự re-resolve DNS (30s) |
+| Cổng đã bị chiếm | 5432/6379/8000/8001/8080 đang dùng bởi tiến trình khác |
 
 ---
 
@@ -348,7 +459,7 @@ celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:Da
 | `DB_HOST` | Host PostgreSQL | `localhost` |
 | `REDIS_URL` | URL Redis | `redis://localhost:6379/0` |
 | `CELERY_BROKER_URL` | URL broker Celery | `redis://localhost:6379/1` |
-| `JWT_SECRET_KEY` | Khóa bí mật JWT dùng chung | *(bắt buộc, giống FastAPI)* |
+| `SECRET_KEY` | Khóa bí mật Django **và** ký JWT (dùng chung với FastAPI) | `django-insecure-...` |
 | `ACCESS_TOKEN_LIFETIME_MINUTES` | Thời hạn access token | `15` |
 | `REFRESH_TOKEN_LIFETIME_DAYS` | Thời hạn refresh token | `7` |
 | `PAYMENT_PROVIDER` | Provider thanh toán (MOCK) | `MOCK` |
@@ -364,7 +475,7 @@ celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:Da
 |------|-------|-------|
 | `DATABASE_URL` | SQLAlchemy async URL | `postgresql+asyncpg://postgres:pass@localhost/trinity` |
 | `REDIS_URL` | URL Redis | `redis://localhost:6379/0` |
-| `JWT_SECRET_KEY` | Khóa bí mật JWT dùng chung | *(giống Django)* |
+| `SECRET_KEY` | Khóa xác thực JWT — **phải giống `core_service/.env`** | *(bắt buộc)* |
 | `LLM_PROVIDER` | Backend LLM | `ollama` (local) / `openai` / `google` |
 | `LLM_MODEL` | Tên model | `llama3.1:8b` / `gpt-4o-mini` |
 | `EMBEDDING_MODEL` | Model embedding | `nomic-embed-text` / `text-embedding-3-small` |
@@ -578,14 +689,15 @@ cd trinity_ai
 # 2. Copy and fill env files
 cp core_service/.env.example core_service/.env
 cp fast_api_services/.env.example fast_api_services/.env
-# Edit both files — set DB_PASSWORD, SECRET_KEY, JWT_SECRET_KEY
+# Edit both files — set DB_PASSWORD and the SAME SECRET_KEY in both
+# (full guide: see "Hướng dẫn chạy đầy đủ" above)
 
 # 3. Start everything
 cd deployment
 docker compose up --build
 
-# App is available at http://localhost
-# (Ollama pulls LLaMA 3.1 8B on first start — ~5 GB, takes a few minutes)
+# App is available at http://localhost:8080
+# (no Ollama service in compose — default LLM is OpenAI; set OPENAI_API_KEY)
 ```
 
 ---
@@ -667,7 +779,7 @@ celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:Da
 | `DB_PORT` | PostgreSQL port | `5432` |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
 | `CELERY_BROKER_URL` | Celery broker URL | `redis://localhost:6379/1` |
-| `JWT_SECRET_KEY` | Shared secret for JWT | *(required, same as FastAPI)* |
+| `SECRET_KEY` | Shared secret for Django + JWT signing | *(required; same as FastAPI)* |
 | `ACCESS_TOKEN_LIFETIME_MINUTES` | JWT access token TTL | `15` |
 | `REFRESH_TOKEN_LIFETIME_DAYS` | JWT refresh token TTL | `7` |
 
@@ -677,7 +789,7 @@ celery -A core_service beat -l info --scheduler django_celery_beat.schedulers:Da
 |----------|-------------|---------|
 | `DATABASE_URL` | Async SQLAlchemy URL | `postgresql+asyncpg://postgres:pass@localhost/trinity` |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
-| `JWT_SECRET_KEY` | Shared secret for JWT | *(same as Django)* |
+| `SECRET_KEY` | Shared secret for JWT auth — must match Django | *(required)* |
 | `LLM_PROVIDER` | LLM backend | `ollama` / `openai` / `google` |
 | `LLM_MODEL` | Model name | `llama3.1:8b` / `gpt-4o-mini` |
 | `EMBEDDING_MODEL` | Embedding model | `nomic-embed-text` / `text-embedding-3-small` |

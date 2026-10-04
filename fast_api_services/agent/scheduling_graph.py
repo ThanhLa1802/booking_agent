@@ -329,12 +329,22 @@ def _make_propose_node(llm, tools: list):
                     "proposal": None,
                     "confirmed": True,
                 }
-            # No real data — ask LLM for a graceful fallback message only
+            # No real data — ask LLM for a graceful fallback message only.
+            # Scope is enforced here at the prompt level (the booking graph does
+            # the same via SYSTEM_PROMPT): off-topic requests must be declined,
+            # never answered, even when no scheduling data is involved.
             system = SystemMessage(
                 content=(
-                    "Bạn là trợ lý xếp lịch thi cho quản trị viên trung tâm âm nhạc Trinity. "
-                    "Không tìm thấy dữ liệu từ hệ thống. "
-                    "Hãy thông báo ngắn gọn bằng tiếng Việt rằng không có dữ liệu trong khoảng thời gian yêu cầu."
+                    "Bạn là trợ lý xếp lịch thi cho quản trị viên trung tâm âm nhạc "
+                    "Trinity College London. Bạn CHỈ hỗ trợ các việc liên quan tới "
+                    "trung tâm và kỳ thi Trinity (xếp lịch, giám khảo, ca thi, lịch thi, "
+                    "phân công, báo cáo). "
+                    "Nếu người dùng hỏi bất cứ điều gì ngoài phạm vi đó (ví dụ: viết code, "
+                    "toán, kiến thức chung, thời tiết, trò chuyện phiếm), hãy TỪ CHỐI trong "
+                    "MỘT câu ngắn và hướng họ quay lại việc xếp lịch — TUYỆT ĐỐI không trả "
+                    "lời nội dung ngoài phạm vi. "
+                    "Nếu không tìm thấy dữ liệu trong khoảng thời gian yêu cầu, hãy thông "
+                    "báo ngắn gọn bằng tiếng Việt rằng không có dữ liệu."
                 )
             )
             response = await llm.ainvoke([system] + state["messages"])

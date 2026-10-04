@@ -92,4 +92,6 @@ def make_examiner_tools(ctx: ExaminerToolContext) -> list:
             )
         return "\n".join(lines)
 
-    return [get_my_schedule]
+    from fast_api_services.agent.tool_errors import harden_tools
+
+    return harden_tools([get_my_schedule])
